@@ -1,0 +1,28 @@
+Package: ligera
+Title: LIght GEnetic Robust Association
+Version: 1.0.0.9000
+Authors@R: 
+    person(given = "Alejandro",
+	   family = "Ochoa",
+	   role = c("aut", "cre"),
+	   email = "alejandro.ochoa@duke.edu",
+           comment = c(ORCID = "0000-0003-4928-3403"))
+Description: Implements a fast genetic association approach robust to all forms of population and family structure and umodeled environmental effects.
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.1.0
+Imports:
+    popkin,
+    cPCG,
+    tibble
+VignetteBuilder: knitr
+URL: https://github.com/OchoaLab/ligera
+BugReports: https://github.com/OchoaLab/ligera/issues
+Suggests: 
+    testthat,
+    knitr,
+    rmarkdown,
+    BEDMatrix,
+    genio
