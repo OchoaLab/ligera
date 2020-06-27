@@ -68,7 +68,7 @@ tib <- bind_cols( bim, tib )
 
 ## Command-line script
 
-A script with an interphase just like GCTA's and other related genetic association software is available in the `scripts/` subdirectory of this repository (on GitHub).
+A `ligera` script with an interface just like GCTA's and other related genetic association software is available in the `scripts/` subdirectory of this repository (on GitHub).
 The prerequisite R packages are:
 
 - ligera
