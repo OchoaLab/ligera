@@ -128,6 +128,66 @@ test_that("ligera runs on random data with missingness in X and trait", {
 ### LIGERA2 (Full BOLT trick) ###
 #################################
 
+test_that("popkin_prod stops when needed", {
+    # NOTE either mean_kinship or b must be supplied (test all combos)
+    # everything missing
+    expect_error( popkin_prod() )
+    # singletons (2 things missing)
+    expect_error( popkin_prod( X = X ) )
+    expect_error( popkin_prod( P = Y ) )
+    expect_error( popkin_prod( mean_kinship = mean_kinship ) )
+    expect_error( popkin_prod( b = b ) )
+    # pairs (1 thing missing)
+    expect_error( popkin_prod( X = X, P = Y ) )
+    expect_error( popkin_prod( X = X, mean_kinship = mean_kinship ) )
+    expect_error( popkin_prod( P = Y, mean_kinship = mean_kinship ) )
+    expect_error( popkin_prod( X = X, b = b ) )
+    expect_error( popkin_prod( P = Y, b = b ) )
+
+    # other validations
+    # X and Y must be matrices
+    expect_error( popkin_prod( X = 1:10, P = Y, mean_kinship = mean_kinship ) )
+    expect_error( popkin_prod( X = X, P = 1:10, mean_kinship = mean_kinship ) )
+    # X and Y dimensions disagree
+    expect_error( popkin_prod( X = X, P = Y[ , -1 ], mean_kinship = mean_kinship ) )
+    # mean kinship is not scalar
+    expect_error( popkin_prod( X = X, P = Y, mean_kinship = 1:10 ) )
+})
+
+test_that("popkin_prod matches direct product", {
+    # for exact comparisons, use X without missingness
+
+    # true product in this case
+    KP0 <- kinship_est %*% Y
+    
+    # version with b present
+    # NOTE: use <<- to remember variable globally (outside this scope)
+    obj <- popkin_prod( X = X, P = Y, b = b ) # , mean_kinship = mean_kinship
+    KP1 <<- obj$KP
+    # compare this right away
+    expect_equal( KP1, KP0 ) # this is what it should be!
+    # some basic validations
+    expect_true( !anyNA( KP1 ) )
+
+    # version with missingness, b present
+    obj <- popkin_prod( X = X_miss, P = Y, b = b ) # , mean_kinship = mean_kinship
+    KP2 <<- obj$KP
+    # basic validation
+    expect_true( !anyNA( KP2 ) )
+
+    # version with b missing
+    obj <- popkin_prod( X = X, P = Y, mean_kinship = mean_kinship )
+    KP1 <- obj$KP
+    b_prod <- obj$b
+    inbr_prod <- obj$inbr
+    # compare this right away
+    expect_equal( KP1, KP0 ) # this is what it should be!
+    expect_equal( b_prod, b )
+    expect_equal( inbr_prod, inbr_est )
+    # some basic validations
+    expect_true( !anyNA( KP1 ) )
+})
+
 test_that("conj_grad_scan stops when needed", {
     # everything missing
     expect_error( conj_grad_scan() )
@@ -316,6 +376,20 @@ if (
         # and this one compares to tib2
         expect_silent( tib2_BEDMatrix <- ligera( X_miss_BEDMatrix, trait, kinship ) )
         expect_equal( tib2, tib2_BEDMatrix )
+    })
+    
+    test_that("popkin_prod matches direct product", {
+        # version with b present
+        expect_silent(
+            obj <- popkin_prod( X = X_BEDMatrix, P = Y, b = b )
+        )
+        expect_equal( KP1, obj$KP )
+
+        # version with missingness, b present
+        expect_silent(
+            obj <- popkin_prod( X = X_miss_BEDMatrix, P = Y, b = b )
+        )
+        expect_equal( KP2, obj$KP )
     })
     
     test_that("conj_grad_scan runs correctly on BEDMatrix data, recovers R matrix outputs", {
