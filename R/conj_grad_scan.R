@@ -18,7 +18,8 @@ conj_grad_scan <- function(
                            indexes_ind = NULL,
                            tol = 1e-15,
                            n_data_cut = 1e6, # block size limit for BEDMatrix
-                           loci_on_cols = FALSE
+                           loci_on_cols = FALSE,
+                           verbose = FALSE
                            ) {
     # validations
     if ( missing( X ) )
@@ -69,10 +70,20 @@ conj_grad_scan <- function(
     # things that get computed by popkin_prod first time
     b <- NA # tells popkin_prod that we need it!
     inbr <- NULL
+
+    if ( verbose )
+        iter <- 0
     
     # start loop
     while ( any( not_converged ) ) {
         # P and R matrices are always non-converged subsets!
+
+        # for info
+        if ( verbose ) {
+            iter <- iter + 1
+            message( 'iter: ', iter )
+            message( 'Rn: ', toString( Rn ) )
+        }
 
         # NOTE: this is the slowest part!
         obj <- popkin_prod(

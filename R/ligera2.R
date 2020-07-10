@@ -16,6 +16,7 @@
 #' Note memory usage is somewhat underestimated and is not controlled strictly.
 #' Default in Linux and Windows is `mem_factor` times the free system memory, otherwise it is 1GB (OSX and other systems).
 #' @param tol Tolerance value passed to conjugate gradient method solver.
+#' @param verbose If TRUE, reports on iterations progress (for debugging)
 #'
 #' @return A tibble containing the following association statistics
 #' 
@@ -52,7 +53,8 @@ ligera2 <- function(
                     loci_on_cols = FALSE,
                     mem_factor = 0.7,
                     mem_lim = NA,
-                    tol = 1e-15
+                    tol = 1e-15,
+                    verbose = FALSE
                     ) {
     # - supports missingness in trait
     # TODO
@@ -110,7 +112,14 @@ ligera2 <- function(
     # only two things have to be solved, all vectors
     # this also calculates inbreeding vector, needed later
     Y <- cbind( trait, 1 )
-    obj_scan <- conj_grad_scan( X, Y, mean_kinship, indexes_ind = indexes_ind, tol = tol )
+    obj_scan <- conj_grad_scan(
+        X = X,
+        Y = Y,
+        mean_kinship = mean_kinship,
+        indexes_ind = indexes_ind,
+        tol = tol,
+        verbose = verbose
+    )
     Z <- obj_scan$Z
     inbr <- obj_scan$inbr
     PhiInvy <- Z[ , 1 ]
@@ -170,6 +179,9 @@ ligera2 <- function(
                          mem_factor = mem_factor
                      )
     m_chunk <- data$m_chunk
+
+    if ( verbose )
+        message( 'Started GAS scan!' )
 
     # navigate chunks
     i_chunk <- 1 # start of first chunk (needed for matrix inputs only; as opposed to function inputs)

@@ -11,7 +11,8 @@ ligera2(
   loci_on_cols = FALSE,
   mem_factor = 0.7,
   mem_lim = NA,
-  tol = 1e-15
+  tol = 1e-15,
+  verbose = FALSE
 )
 }
 \arguments{
@@ -32,6 +33,8 @@ Note memory usage is somewhat underestimated and is not controlled strictly.
 Default in Linux and Windows is \code{mem_factor} times the free system memory, otherwise it is 1GB (OSX and other systems).}
 
 \item{tol}{Tolerance value passed to conjugate gradient method solver.}
+
+\item{verbose}{If TRUE, reports on iterations progress (for debugging)}
 }
 \value{
 A tibble containing the following association statistics
