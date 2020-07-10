@@ -2,3 +2,6 @@
 
 export(ligera)
 export(ligera2)
+export(ligera2_bed)
+importFrom(Rcpp,sourceCpp)
+useDynLib(ligera)

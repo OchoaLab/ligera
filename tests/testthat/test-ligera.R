@@ -38,7 +38,39 @@ trait_miss[ sample( n, n * miss ) ] <- NA
 x_bar <- rowMeans( X )
 b <- (1 - mean( x_bar * ( 2 - x_bar ) ) - mean_kinship ) / ( 1 - mean_kinship )
 kinship_est <- ( crossprod( X - 1 ) / m - b ) / ( 1 - b ) # here we do normalize properly for a plot
-inbr_est <- inbr( kinship_est ) # for a comparison 
+inbr_est <- inbr( kinship_est ) # for a comparison
+# a basic validation
+expect_true( !anyNA( inbr_est ) )
+
+# true product for tests
+KY <- kinship_est %*% Y    
+# compare to vanilla `solve` (using actual inversion, which is least scalable solution)
+Z <- solve( kinship_est, Y )
+# a basic validation
+expect_true( !anyNA( Z ) )
+
+# missingness versions
+x_bar_miss <- rowMeans( X_miss, na.rm = TRUE )
+b_miss <- (1 - mean( x_bar_miss * ( 2 - x_bar_miss ), na.rm = TRUE ) - mean_kinship ) / ( 1 - mean_kinship )
+expect_true( !is.na( b_miss ) )
+# this one takes more steps
+# missing values are just treated as zeroes internally, if missingness is random and uninformative then we're fine
+Xc_miss <- X_miss - 1
+Xc_miss[ is.na( Xc_miss ) ] <- 0
+kinship_est_miss <- ( crossprod( Xc_miss ) / m - b_miss ) / ( 1 - b_miss )
+# inbreding doesn't come from kinship under missigness, do things much more carefully actually!
+# inbr_est_miss <- inbr( kinship_est_miss ) # WRONG in this implementation
+inbr_est_miss <- colMeans( ( X_miss - 1 )^2, na.rm = TRUE ) # the first pass calculation
+inbr_est_miss <- ( 2 * inbr_est_miss - 1 - b_miss ) / ( 1 - b_miss ) # this completes normalization
+# a basic validation
+expect_true( !anyNA( inbr_est_miss ) )
+# true product for tests
+KY_miss <- kinship_est_miss %*% Y    
+# compare to vanilla `solve` (using actual inversion, which is least scalable solution)
+Z_miss <- solve( kinship_est_miss, Y )
+# a basic validation
+expect_true( !anyNA( Z_miss ) )
+
 
 test_that("ligera stops when needed", {
     # test that there are errors when crucial data is missing
@@ -157,35 +189,22 @@ test_that("popkin_prod stops when needed", {
 test_that("popkin_prod matches direct product", {
     # for exact comparisons, use X without missingness
 
-    # true product in this case
-    KP0 <- kinship_est %*% Y
-    
     # version with b present
-    # NOTE: use <<- to remember variable globally (outside this scope)
     obj <- popkin_prod( X = X, P = Y, b = b ) # , mean_kinship = mean_kinship
-    KP1 <<- obj$KP
-    # compare this right away
-    expect_equal( KP1, KP0 ) # this is what it should be!
-    # some basic validations
-    expect_true( !anyNA( KP1 ) )
+    # compare to direct calculation
+    expect_equal( obj$KP, KY )
 
     # version with missingness, b present
-    obj <- popkin_prod( X = X_miss, P = Y, b = b ) # , mean_kinship = mean_kinship
-    KP2 <<- obj$KP
-    # basic validation
-    expect_true( !anyNA( KP2 ) )
+    obj <- popkin_prod( X = X_miss, P = Y, b = b_miss ) # , mean_kinship = mean_kinship
+    # compare to direct calculation
+    expect_equal( obj$KP, KY_miss )
 
     # version with b missing
     obj <- popkin_prod( X = X, P = Y, mean_kinship = mean_kinship )
-    KP1 <- obj$KP
-    b_prod <- obj$b
-    inbr_prod <- obj$inbr
-    # compare this right away
-    expect_equal( KP1, KP0 ) # this is what it should be!
-    expect_equal( b_prod, b )
-    expect_equal( inbr_prod, inbr_est )
-    # some basic validations
-    expect_true( !anyNA( KP1 ) )
+    # compare to direct calculations
+    expect_equal( obj$KP, KY )
+    expect_equal( obj$b, b )
+    expect_equal( obj$inbr, inbr_est )
 })
 
 test_that("conj_grad_scan stops when needed", {
@@ -210,52 +229,21 @@ test_that("conj_grad_scan stops when needed", {
     expect_error( conj_grad_scan( X = X, Y = Y, mean_kinship = 1:10 ) )
 })
 
-test_that("conj_grad_scan matches solve, cPCG::cgsolve", {
-    # for exact comparisons, use X without missingness
-    
-    # our method
-    # NOTE: use <<- to remember variable globally (outside this scope)
-    obj_scan1 <<- conj_grad_scan( X = X, Y = Y, mean_kinship = mean_kinship )
-    Z <- obj_scan1$Z
-    inbr_scan <- obj_scan1$inbr # estimate from here
-    # compare this right away
-    expect_equal( inbr_est, inbr_scan )
-    # some basic validations
-    expect_true( !anyNA( Z ) )
-    expect_true( !anyNA( inbr_scan ) )
-
-    # compare to vanilla `solve` (using actual inversion, which is least scalable solution)
-    Zsolve <- solve( kinship_est, Y )
-    # compare now!
-    expect_equal( Z, Zsolve )
-    
-    if (
-        suppressMessages( suppressWarnings( require(cPCG) ) )
-    ) {
-        # the other method, which uses existing kinship instead of using X (which scales more poorly)
-        # need to tweak defaults so they agree to high accuracy
-        tol <- 1e-16 # default 1e-6
-        maxIter <- 1e6 # default 1e3
-        # two things have to be solved separately (cgsolve doesn't do Y matrices)
-        Zcg1 <- drop( cgsolve( kinship_est, Y[ , 1 ], tol = tol, maxIter = maxIter ) )
-        Zcg2 <- drop( cgsolve( kinship_est, Y[ , 2 ], tol = tol, maxIter = maxIter ) )
-        Zcg <- cbind( Zcg1, Zcg2 )
-        # get rid of names for comparison
-        dimnames( Zcg ) <- NULL
-
-        # compare now!
-        expect_equal( Z, Zcg )
-    }
+test_that("conj_grad_scan matches solve", {
+    obj <- conj_grad_scan( X = X, Y = Y, mean_kinship = mean_kinship )
+    # compare to precomputed Z from solve (considered ground truth)
+    expect_equal( Z, obj$Z )
+    # ditto direct computation
+    expect_equal( inbr_est, obj$inbr )
 })
 
 test_that("conj_grad_scan works with missingness in X", {
     # here we just want to know that missingness in X doesn't result in missingness in outputs
     
-    # NOTE: use <<- to remember variable globally (outside this scope)
-    obj_scan2 <<- conj_grad_scan( X = X_miss, Y = Y, mean_kinship = mean_kinship )
-    # some basic validations
-    expect_true( !anyNA( obj_scan2$Z ) )
-    expect_true( !anyNA( obj_scan2$inbr ) )
+    obj <- conj_grad_scan( X = X_miss, Y = Y, mean_kinship = mean_kinship )
+    # compare to precomputed values
+    expect_equal( Z_miss, obj$Z )
+    expect_equal( inbr_est_miss, obj$inbr )
 })
 
 test_that("ligera2 stops when needed", {
@@ -348,7 +336,81 @@ test_that("ligera2 runs on random data with missingness in X and trait", {
     expect_true( all( tib8$p_q > 0 ) )
 })
 
+##############################################################
+### LIGERA2_BED (Full BOLT trick, Rcpp optimized BED only) ###
+##############################################################
 
+test_that("popkin_prod_bed stops when needed", {
+    # everything missing
+    expect_error( popkin_prod_bed() )
+    # singletons (2 things missing)
+    expect_error( popkin_prod_bed( X = X ) )
+    expect_error( popkin_prod_bed( P = Y ) )
+    expect_error( popkin_prod_bed( b = b ) )
+    # pairs (1 thing missing)
+    expect_error( popkin_prod_bed( X = X, P = Y ) )
+    expect_error( popkin_prod_bed( X = X, b = b ) )
+    expect_error( popkin_prod_bed( P = Y, b = b ) )
+
+    # other validations
+    # X and Y must be matrices
+    expect_error( popkin_prod_bed( X = 1:10, P = Y, b = b ) )
+    expect_error( popkin_prod_bed( X = X, P = 1:10, b = b ) )
+    # X and Y dimensions disagree
+    expect_error( popkin_prod_bed( X = X, P = Y[ , -1 ], b = b ) )
+    # b is not scalar
+    expect_error( popkin_prod_bed( X = X, P = Y, b = 1:10 ) )
+    # b is not numeric
+    expect_error( popkin_prod_bed( X = X, P = Y, b = 'b' ) )
+})
+
+test_that("popkin_prod_bed matches direct product", {
+    # for exact comparisons, use X without missingness
+
+    # version with b present
+    KP <- popkin_prod_bed( X = X, P = Y, b = b )
+    # compare to direct calculation
+    expect_equal( KP, KY )
+
+    # version with missingness, b present
+    KP <- popkin_prod_bed( X = X_miss, P = Y, b = b_miss )
+    # compare to direct calculation
+    expect_equal( KP, KY_miss )
+})
+
+test_that("conj_grad_scan_bed stops when needed", {
+    # everything missing
+    expect_error( conj_grad_scan_bed() )
+    # singletons (2 things missing)
+    expect_error( conj_grad_scan_bed( X = X ) )
+    expect_error( conj_grad_scan_bed( Y = Y ) )
+    expect_error( conj_grad_scan_bed( b = b ) )
+    # pairs (1 thing missing)
+    expect_error( conj_grad_scan_bed( X = X, Y = Y ) )
+    expect_error( conj_grad_scan_bed( X = X, b = b ) )
+    expect_error( conj_grad_scan_bed( Y = Y, b = b ) )
+
+    # other validations
+    # X and Y must be matrices
+    expect_error( conj_grad_scan_bed( X = 1:10, Y = Y, b = b ) )
+    expect_error( conj_grad_scan_bed( X = X, Y = 1:10, b = b ) )
+    # X and Y dimensions disagree
+    expect_error( conj_grad_scan_bed( X = X, Y = Y[ , -1 ], b = b ) )
+    # b is not scalar
+    expect_error( conj_grad_scan_bed( X = X, Y = Y, b = 1:10 ) )
+    # b is not numeric
+    expect_error( conj_grad_scan_bed( X = X, Y = Y, b = 'b' ) )
+})
+
+test_that("conj_grad_scan_bed matches solve", {
+    # first without missingness
+    Z_scan <- conj_grad_scan_bed( X = X, Y = Y, b = b )
+    expect_equal( Z, Z_scan )
+    
+    # then with missingness
+    Z_miss_scan <- conj_grad_scan_bed( X = X_miss, Y = Y, b = b_miss )
+    expect_equal( Z_miss, Z_miss_scan )
+})
 
 # test BEDMatrix version, which also requires us to write the random data out (with genio)
 if (
@@ -368,6 +430,8 @@ if (
     X_BEDMatrix <- suppressMessages( suppressWarnings( BEDMatrix( name, n = n, p = m ) ) )
     X_miss_BEDMatrix <- suppressMessages( suppressWarnings( BEDMatrix( name_miss, n = n, p = m ) ) )
     
+    ### ligera ###
+    
     test_that("ligera runs correctly on BEDMatrix data, recovers R matrix outputs", {
         # this one compares to tib1
         expect_silent( tib1_BEDMatrix <- ligera( X_BEDMatrix, trait, kinship ) )
@@ -377,33 +441,35 @@ if (
         expect_silent( tib2_BEDMatrix <- ligera( X_miss_BEDMatrix, trait, kinship ) )
         expect_equal( tib2, tib2_BEDMatrix )
     })
+
+    ### ligera2 ###
     
     test_that("popkin_prod matches direct product", {
         # version with b present
         expect_silent(
             obj <- popkin_prod( X = X_BEDMatrix, P = Y, b = b )
         )
-        expect_equal( KP1, obj$KP )
+        expect_equal( KY, obj$KP )
 
         # version with missingness, b present
         expect_silent(
-            obj <- popkin_prod( X = X_miss_BEDMatrix, P = Y, b = b )
+            obj <- popkin_prod( X = X_miss_BEDMatrix, P = Y, b = b_miss )
         )
-        expect_equal( KP2, obj$KP )
+        expect_equal( KY_miss, obj$KP )
     })
     
     test_that("conj_grad_scan runs correctly on BEDMatrix data, recovers R matrix outputs", {
-        # this one compares to obj_scan1
         expect_silent(
-            obj_scan1_BEDMatrix <- conj_grad_scan( X = X_BEDMatrix, Y = Y, mean_kinship = mean_kinship )
+            obj <- conj_grad_scan( X = X_BEDMatrix, Y = Y, mean_kinship = mean_kinship )
         )
-        expect_equal( obj_scan1, obj_scan1_BEDMatrix )
+        expect_equal( Z, obj$Z )
+        expect_equal( inbr_est, obj$inbr )
         
-        # and this one compares to obj_scan2
         expect_silent(
-                obj_scan2_BEDMatrix <- conj_grad_scan( X = X_miss_BEDMatrix, Y = Y, mean_kinship = mean_kinship )
+                obj <- conj_grad_scan( X = X_miss_BEDMatrix, Y = Y, mean_kinship = mean_kinship )
         )
-        expect_equal( obj_scan2, obj_scan2_BEDMatrix )
+        expect_equal( Z_miss, obj$Z )
+        expect_equal( inbr_est_miss, obj$inbr )
     })
 
     test_that("ligera2 runs correctly on BEDMatrix data, recovers R matrix outputs", {
@@ -412,6 +478,69 @@ if (
         
         tib6_BEDMatrix <- ligera2( X = X_miss_BEDMatrix, trait = trait, mean_kinship = mean_kinship )
         expect_equal( tib6, tib6_BEDMatrix )
+    })
+
+    ### ligera2_bed ###
+
+    file_bed <- paste0(name, '.bed')
+    
+    test_that("get_b_inbr_bed works", {
+        expect_silent(
+            obj <- get_b_inbr_bed_cpp( file_bed, m, n, mean_kinship )
+        )
+        expect_equal( class( obj ), 'list' )
+        expect_equal( length( obj ), 2 )
+        expect_equal( names( obj ), c('b', 'inbr') )
+        expect_equal( obj$b, b )
+        expect_equal( obj$inbr, inbr_est )
+    })
+    
+    test_that("popkin_prod_bed matches direct product", {
+        # version with b present
+        expect_silent(
+            KY_BM <- popkin_prod_bed( X = X_BEDMatrix, P = Y, b = b )
+        )
+        expect_equal( KY, KY_BM )
+
+        # version with missingness, b present
+        expect_silent(
+            KY_BM <- popkin_prod_bed( X = X_miss_BEDMatrix, P = Y, b = b_miss )
+        )
+        expect_equal( KY_miss, KY_BM )
+    })
+    
+    test_that("conj_grad_scan_bed runs correctly on BEDMatrix data, recovers R matrix outputs", {
+        # this one compares to Z
+        expect_silent(
+            Z_BM <- conj_grad_scan_bed( X = X_BEDMatrix, Y = Y, b = b )
+        )
+        expect_equal( Z, Z_BM )
+        
+        # and this one compares to Z_miss
+        expect_silent(
+                Z_BM <- conj_grad_scan_bed( X = X_miss_BEDMatrix, Y = Y, b = b_miss )
+        )
+        expect_equal( Z_miss, Z_BM )
+    })
+    
+    test_that("ligera2_bed recovers R matrix outputs", {
+        tib5_bed <- ligera2_bed(
+            file = name,
+            m_loci = m,
+            n_ind = n,
+            trait = trait,
+            mean_kinship = mean_kinship
+        )
+        expect_equal( tib5, tib5_bed )
+        
+        tib6_bed <- ligera2_bed(
+            file = name_miss,
+            m_loci = m,
+            n_ind = n,
+            trait = trait,
+            mean_kinship = mean_kinship
+        )
+        expect_equal( tib6, tib6_bed )
     })
 
     # delete temporary files now

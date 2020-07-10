@@ -16,7 +16,9 @@ RoxygenNote: 7.1.1
 Imports:
     popkin,
     cPCG,
-    tibble
+    tibble,
+    BEDMatrix,
+    Rcpp
 VignetteBuilder: knitr
 URL: https://github.com/OchoaLab/ligera
 BugReports: https://github.com/OchoaLab/ligera/issues
@@ -24,5 +26,6 @@ Suggests:
     testthat,
     knitr,
     rmarkdown,
-    BEDMatrix,
     genio
+LinkingTo: 
+    Rcpp
