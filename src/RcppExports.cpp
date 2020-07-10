@@ -6,8 +6,8 @@
 using namespace Rcpp;
 
 // get_b_inbr_bed_cpp
-List get_b_inbr_bed_cpp(const char* file, std::vector<int>::size_type m_loci, std::vector<int>::size_type n_ind, double mean_kinship);
-RcppExport SEXP _ligera_get_b_inbr_bed_cpp(SEXP fileSEXP, SEXP m_lociSEXP, SEXP n_indSEXP, SEXP mean_kinshipSEXP) {
+Rcpp::List get_b_inbr_bed_cpp(const char* file, std::vector<int>::size_type m_loci, std::vector<int>::size_type n_ind, double mean_kinship, Rcpp::Nullable<Rcpp::LogicalVector> indexes_ind_R);
+RcppExport SEXP _ligera_get_b_inbr_bed_cpp(SEXP fileSEXP, SEXP m_lociSEXP, SEXP n_indSEXP, SEXP mean_kinshipSEXP, SEXP indexes_ind_RSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -15,13 +15,14 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< std::vector<int>::size_type >::type m_loci(m_lociSEXP);
     Rcpp::traits::input_parameter< std::vector<int>::size_type >::type n_ind(n_indSEXP);
     Rcpp::traits::input_parameter< double >::type mean_kinship(mean_kinshipSEXP);
-    rcpp_result_gen = Rcpp::wrap(get_b_inbr_bed_cpp(file, m_loci, n_ind, mean_kinship));
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::LogicalVector> >::type indexes_ind_R(indexes_ind_RSEXP);
+    rcpp_result_gen = Rcpp::wrap(get_b_inbr_bed_cpp(file, m_loci, n_ind, mean_kinship, indexes_ind_R));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_ligera_get_b_inbr_bed_cpp", (DL_FUNC) &_ligera_get_b_inbr_bed_cpp, 4},
+    {"_ligera_get_b_inbr_bed_cpp", (DL_FUNC) &_ligera_get_b_inbr_bed_cpp, 5},
     {NULL, NULL, 0}
 };
 

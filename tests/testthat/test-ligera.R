@@ -31,6 +31,7 @@ dimnames( Y ) <- NULL
 # trait with missingness
 trait_miss <- trait # copy first
 trait_miss[ sample( n, n * miss ) ] <- NA
+indexes_ind <- !is.na( trait ) # to test for ind removals
 
 # for ligera2 (full BOLT-like trick)
 # construct exact kinship matrix estimate we'll test in trick version
@@ -41,6 +42,14 @@ kinship_est <- ( crossprod( X - 1 ) / m - b ) / ( 1 - b ) # here we do normalize
 inbr_est <- inbr( kinship_est ) # for a comparison
 # a basic validation
 expect_true( !anyNA( inbr_est ) )
+
+# version of b and inbr_est with ind removals (but no X missingness, first)
+x_bar <- rowMeans( X[ , indexes_ind ] ) # overwrite x_bar, not reused elsewhere
+b_ind_rm <- (1 - mean( x_bar * ( 2 - x_bar ) ) - mean_kinship ) / ( 1 - mean_kinship )
+kinship_est_ind_rm <- ( crossprod( X[ , indexes_ind ] - 1 ) / m - b_ind_rm ) / ( 1 - b_ind_rm ) # here we do normalize properly for a plot
+inbr_est_ind_rm <- inbr( kinship_est_ind_rm ) # for a comparison
+# a basic validation
+expect_true( !anyNA( inbr_est_ind_rm ) )
 
 # true product for tests
 KY <- kinship_est %*% Y    
@@ -485,14 +494,25 @@ if (
     file_bed <- paste0(name, '.bed')
     
     test_that("get_b_inbr_bed works", {
+        # version with no individuals removed
         expect_silent(
-            obj <- get_b_inbr_bed_cpp( file_bed, m, n, mean_kinship )
+            obj <- get_b_inbr_bed_cpp( file_bed, m, n, mean_kinship, NULL ) # NULL = no individuals to remove
         )
         expect_equal( class( obj ), 'list' )
         expect_equal( length( obj ), 2 )
         expect_equal( names( obj ), c('b', 'inbr') )
         expect_equal( obj$b, b )
         expect_equal( obj$inbr, inbr_est )
+
+        # version with individuals removed
+        expect_silent(
+            obj <- get_b_inbr_bed_cpp( file_bed, m, n, mean_kinship, indexes_ind )
+        )
+        expect_equal( class( obj ), 'list' )
+        expect_equal( length( obj ), 2 )
+        expect_equal( names( obj ), c('b', 'inbr') )
+        expect_equal( obj$b, b_ind_rm )
+        expect_equal( obj$inbr, inbr_est_ind_rm )
     })
     
     test_that("popkin_prod_bed matches direct product", {

@@ -9,15 +9,40 @@ const unsigned char plink_bed_byte_header[3] = {0x6c, 0x1b, 1};
 
 // this function calculates two terms from one pass of the genotype matrix, needed for unbiased implicit kinship estimates
 
+// params:
+// file, m_loci, n_ind: BED file path and matrix dimensions
+// mean_kinship: a value to unbias estimates
+// indexes_ind_rm: vector of indeces to remove (can be NULL)
+
 // [[Rcpp::export]]
-List get_b_inbr_bed_cpp(
-			const char* file,
-			std::vector<int>::size_type m_loci,
-			std::vector<int>::size_type n_ind,
-			double mean_kinship
-			) {
+Rcpp::List get_b_inbr_bed_cpp(
+			      const char* file,
+			      std::vector<int>::size_type m_loci,
+			      std::vector<int>::size_type n_ind,
+			      double mean_kinship,
+			      Rcpp::Nullable<Rcpp::LogicalVector> indexes_ind_R
+			      ) {
   // file must be full path (no missing extensions)
-  
+
+  // will need an index for individuals right away
+  std::vector<int>::size_type j;
+
+  // sort out indexes_ind_rm, which in C++ is a mess (but we want reasonable R-like behavior on the outside)
+  bool do_ind_filt = false;
+  // a pure C++ version of the input (negated), for ease in the loops
+  bool* indexes_ind_rm = new bool[ n_ind ];
+  if ( indexes_ind_R.isNotNull() ) {
+    // change this boolean, will be easier to test in loops
+    do_ind_filt = true;
+    // also extract non-null values of indexes, but this is still an R variable
+    Rcpp::LogicalVector indexes_ind_R_good( indexes_ind_R );
+    // negate and copy values over to C++ version
+    for (j = 0; j < n_ind; j++) {
+      // have to do it in this awkward way, since indexes_ind_R_good is not type bool
+      indexes_ind_rm[ j ] = indexes_ind_R_good[ j ] == FALSE;
+    }
+  }
+    
   // open input file in "binary" mode
   FILE *file_stream = fopen( file, "rb" );
   // die right away if needed, before initializing buffers etc
@@ -65,18 +90,20 @@ List get_b_inbr_bed_cpp(
   
   // (1) a summary of the MAF variance across the genome
   double b = 0.0;
+  // a denominator in case there are loci that are completely NA (after removal of individuals)
+  std::vector<int>::size_type m_loci_obs = m_loci; // decrement as we see NAs
   // intermediates for b, to calculate allele frequencies
   int x_sum = 0;
   std::vector<int>::size_type x_num = n_ind; // decrement NAs, just as for inbr_num above (assuming NAs are rare, this is faster)
   double x_mean;
-  
+
   // (2) intermeditates for inbr
   // an uncorrected inbreeding coefficient estimate
   std::vector<int>::size_type* inbr_sum = new std::vector<int>::size_type[ n_ind ];
   // the number of non-NA cases, per individual
   std::vector<int>::size_type* inbr_num = new std::vector<int>::size_type[ n_ind ];
-  std::vector<int>::size_type j;
   // initialize
+  // NOTE: if there is an individual filter, we'll just skip calculating those values in the big genotype loop (not here)
   for (j = 0; j < n_ind; j++) {
     inbr_sum[ j ] = 0;
     // all start as m_loci, will decrement later as we encounter NAs
@@ -136,6 +163,11 @@ List get_b_inbr_bed_cpp(
       for (pos = 0; pos < 4; pos++, j++) {
 
 	if (j < n_ind) {
+
+	  // skip individual from calculations if there's a filter and its removed in this filter
+	  if ( do_ind_filt && indexes_ind_rm[ j ] )
+	    continue;
+	  
 	  // extract current genotype using this mask
 	  // (3 == 00000011 in binary)
 	  xij = buf_k & 3;
@@ -185,9 +217,15 @@ List get_b_inbr_bed_cpp(
 
     // finish processing terms for b
     // calculate mean genotype now that we're done with this one locus
-    x_mean = static_cast<double>(x_sum) / x_num;
-    // update b running sum
-    b += x_mean * (2 - x_mean);
+    if ( x_num != 0 ) {
+      x_mean = static_cast<double>(x_sum) / x_num;
+      // update b running sum
+      b += x_mean * (2 - x_mean);
+    } else {
+      // NOTE: no observations treats this locus' contribution to b as zero, only happens if every individual that wasn't removed was NA
+      // in this case we decrement the denominator of b, for when we normalize it into a mean
+      m_loci_obs--;
+    }
     
   }
   // finished matrix!
@@ -206,16 +244,34 @@ List get_b_inbr_bed_cpp(
 
   // do some final processing of b
   // this includes all final steps, including the mean_kinship correction
-  b = ( 1.0 - ( b / m_loci ) - mean_kinship ) / ( 1.0 - mean_kinship );
+  b = ( 1.0 - ( b / m_loci_obs ) - mean_kinship ) / ( 1.0 - mean_kinship );
   // create R version
-  NumericVector bR(1);
+  Rcpp::NumericVector bR(1);
   bR[ 0 ] = b;
 
+  // to have output length right, count the number of individuals we're keeping
+  std::vector<int>::size_type n_ind_kept = n_ind; // decrement
+  if ( do_ind_filt ) {
+    for (j = 0; j < n_ind; j++) {
+      if ( indexes_ind_rm[ j ] )
+	n_ind_kept--;
+    }
+  }
+  
   // final inbreeding vector
-  NumericVector inbr(n_ind);
+  // NOTE: contains only individuals that were not removed!
+  Rcpp::NumericVector inbr(n_ind_kept);
   // the inbreeding data also now gets normalized fully, which requires the b above
+  // we reuse i to indicate the output index
+  i = 0;
   for (j = 0; j < n_ind; j++) {
-    inbr[ j ] = ( ( 2.0 * inbr_sum[ j ] ) / inbr_num[ j ] - 1.0 - b ) / ( 1.0 - b );
+    // skip individual if needed
+    if ( do_ind_filt && indexes_ind_rm[ j ] )
+      continue;
+    // otherwise add to vector
+    inbr[ i ] = ( ( 2.0 * inbr_sum[ j ] ) / inbr_num[ j ] - 1.0 - b ) / ( 1.0 - b );
+    // increment output counter (only happens if individual wasn't skipped)
+    i++;
   }
 
   // free intermediate objects now
@@ -223,10 +279,10 @@ List get_b_inbr_bed_cpp(
   delete [] inbr_num;
 
   // should return b and inbr together in an R List
-  List ret_list = List::create(
-			       Named("b") = bR,
-			       Named("inbr") = inbr
-			       );
+  Rcpp::List ret_list = Rcpp::List::create(
+					   Rcpp::Named("b") = bR,
+					   Rcpp::Named("inbr") = inbr
+					   );
   
   // return genotype matrix
   return ret_list;

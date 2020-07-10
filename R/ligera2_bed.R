@@ -118,7 +118,13 @@ ligera2_bed <- function(
     # (this scans the whole BED file once)
     if ( verbose )
         message( 'get_b_inbr_bed_cpp' )
-    obj <- get_b_inbr_bed_cpp( file, m_loci, n_ind, mean_kinship )
+    obj <- get_b_inbr_bed_cpp(
+        file,
+        m_loci,
+        n_ind,
+        mean_kinship,
+        indexes_ind
+    )
     b <- obj$b
     inbr <- obj$inbr
     
