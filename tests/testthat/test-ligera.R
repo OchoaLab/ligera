@@ -30,7 +30,9 @@ dimnames( Y ) <- NULL
 
 # trait with missingness
 trait_miss <- trait # copy first
-trait_miss[ sample( n, n * miss ) ] <- NA
+# repeat until we have at least one NA, otherwise this test doesn't serve its purpose
+while ( !anyNA( trait_miss ) ) 
+    trait_miss[ sample( n, n * miss ) ] <- NA
 indexes_ind <- !is.na( trait ) # to test for ind removals
 
 # for ligera2 (full BOLT-like trick)

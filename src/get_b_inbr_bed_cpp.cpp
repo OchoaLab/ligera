@@ -1,11 +1,7 @@
 #include <Rcpp.h>
 #include <cerrno>
 #include <vector>
-using namespace Rcpp;
-
-// expected header (magic numbers)
-// assume standard locus-major order and latest format
-const unsigned char plink_bed_byte_header[3] = {0x6c, 0x1b, 1};
+#include "bed.h"
 
 // this function calculates two terms from one pass of the genotype matrix, needed for unbiased implicit kinship estimates
 
@@ -50,7 +46,7 @@ Rcpp::List get_b_inbr_bed_cpp(
     // send error message to R
     char msg[100];
     sprintf(msg, "Could not open BED file `%s` for reading: %s", file, strerror( errno ));
-    stop(msg);
+    Rcpp::stop(msg);
   }
 
   /////////////////////////
@@ -70,7 +66,7 @@ Rcpp::List get_b_inbr_bed_cpp(
     // wrap up everything properly
     fclose( file_stream ); // close file
     // now send error message to R
-    stop("Input BED file did not have a complete header (3-byte magic numbers)!");
+    Rcpp::stop("Input BED file did not have a complete header (3-byte magic numbers)!");
   }
   
   // require that they match our only supported specification of locus-major order and latest format
@@ -82,7 +78,7 @@ Rcpp::List get_b_inbr_bed_cpp(
       // wrap up everything properly
       fclose( file_stream ); // close file
       // now send error message to R
-      stop("Input BED file is not in supported format.  Either magic numbers do not match, or requested sample-major format is not supported.  Only latest locus-major format is supported!");
+      Rcpp::stop("Input BED file is not in supported format.  Either magic numbers do not match, or requested sample-major format is not supported.  Only latest locus-major format is supported!");
     }
   }
 
@@ -139,7 +135,7 @@ Rcpp::List get_b_inbr_bed_cpp(
       // now send error message to R
       char msg[100];
       sprintf(msg, "Truncated file: row %ld terminated at %ld bytes, expected %ld.", i+1, n_buf_read, n_buf); // convert to 1-based coordinates
-      stop(msg);
+      Rcpp::stop(msg);
     }
 
     // process buffer now!
@@ -206,7 +202,7 @@ Rcpp::List get_b_inbr_bed_cpp(
 	    // now send error message to R
 	    char msg[200];
 	    sprintf(msg, "Row %ld padding was non-zero.  Either the specified number of individuals is incorrect or the input file is corrupt!", i+1); // convert to 1-based coordinates
-	    stop(msg);
+	    Rcpp::stop(msg);
 	  }
 	}
       }
@@ -236,10 +232,10 @@ Rcpp::List get_b_inbr_bed_cpp(
   delete [] buffer; // free buffer memory
   // and more troubleshooting messages (for windows)
   if ( fclose( file_stream ) != 0 )
-    stop("Input BED file stream close failed!");
+    Rcpp::stop("Input BED file stream close failed!");
   if ( n_buf_read != 0 ) {
     // now send error message to R
-    stop("Input BED file continued after all requested rows were read!  Either the specified the number of loci was too low or the input file is corrupt!");
+    Rcpp::stop("Input BED file continued after all requested rows were read!  Either the specified the number of loci was too low or the input file is corrupt!");
   }
 
   // do some final processing of b
