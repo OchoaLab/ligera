@@ -5,3 +5,7 @@ get_b_inbr_bed_cpp <- function(file, m_loci, n_ind, mean_kinship, indexes_ind_R)
     .Call('_ligera_get_b_inbr_bed_cpp', PACKAGE = 'ligera', file, m_loci, n_ind, mean_kinship, indexes_ind_R)
 }
 
+popkin_prod_bed_cpp <- function(file, m_loci, n_ind, P_R, b, indexes_ind_R) {
+    .Call('_ligera_popkin_prod_bed_cpp', PACKAGE = 'ligera', file, m_loci, n_ind, P_R, b, indexes_ind_R)
+}
+

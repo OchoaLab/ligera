@@ -20,9 +20,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// popkin_prod_bed_cpp
+Rcpp::NumericMatrix popkin_prod_bed_cpp(const char* file, std::vector<int>::size_type m_loci, std::vector<int>::size_type n_ind, Rcpp::NumericMatrix P_R, double b, Rcpp::Nullable<Rcpp::LogicalVector> indexes_ind_R);
+RcppExport SEXP _ligera_popkin_prod_bed_cpp(SEXP fileSEXP, SEXP m_lociSEXP, SEXP n_indSEXP, SEXP P_RSEXP, SEXP bSEXP, SEXP indexes_ind_RSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const char* >::type file(fileSEXP);
+    Rcpp::traits::input_parameter< std::vector<int>::size_type >::type m_loci(m_lociSEXP);
+    Rcpp::traits::input_parameter< std::vector<int>::size_type >::type n_ind(n_indSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type P_R(P_RSEXP);
+    Rcpp::traits::input_parameter< double >::type b(bSEXP);
+    Rcpp::traits::input_parameter< Rcpp::Nullable<Rcpp::LogicalVector> >::type indexes_ind_R(indexes_ind_RSEXP);
+    rcpp_result_gen = Rcpp::wrap(popkin_prod_bed_cpp(file, m_loci, n_ind, P_R, b, indexes_ind_R));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_ligera_get_b_inbr_bed_cpp", (DL_FUNC) &_ligera_get_b_inbr_bed_cpp, 5},
+    {"_ligera_popkin_prod_bed_cpp", (DL_FUNC) &_ligera_popkin_prod_bed_cpp, 6},
     {NULL, NULL, 0}
 };
 

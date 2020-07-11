@@ -34,6 +34,7 @@ trait_miss <- trait # copy first
 while ( !anyNA( trait_miss ) ) 
     trait_miss[ sample( n, n * miss ) ] <- NA
 indexes_ind <- !is.na( trait ) # to test for ind removals
+Y_ind_rm <- Y[ indexes_ind , ]
 
 # for ligera2 (full BOLT-like trick)
 # construct exact kinship matrix estimate we'll test in trick version
@@ -59,6 +60,14 @@ KY <- kinship_est %*% Y
 Z <- solve( kinship_est, Y )
 # a basic validation
 expect_true( !anyNA( Z ) )
+
+# versions with ind removals
+# true product for tests
+KY_ind_rm <- kinship_est_ind_rm %*% Y_ind_rm
+# compare to vanilla `solve` (using actual inversion, which is least scalable solution)
+Z_ind_rm <- solve( kinship_est_ind_rm, Y_ind_rm )
+# a basic validation
+expect_true( !anyNA( Z_ind_rm ) )
 
 # missingness versions
 x_bar_miss <- rowMeans( X_miss, na.rm = TRUE )
@@ -494,17 +503,30 @@ if (
     ### ligera2_bed ###
 
     file_bed <- paste0(name, '.bed')
+    file_bed_miss <- paste0(name_miss, '.bed')
     
     test_that("get_b_inbr_bed works", {
         # version with no individuals removed
+        # NULL = no individuals to remove
         expect_silent(
-            obj <- get_b_inbr_bed_cpp( file_bed, m, n, mean_kinship, NULL ) # NULL = no individuals to remove
+            obj <- get_b_inbr_bed_cpp( file_bed, m, n, mean_kinship, NULL )
         )
         expect_equal( class( obj ), 'list' )
         expect_equal( length( obj ), 2 )
         expect_equal( names( obj ), c('b', 'inbr') )
         expect_equal( obj$b, b )
         expect_equal( obj$inbr, inbr_est )
+
+        # version with X missingness, no individuals removed
+        # NULL = no individuals to remove
+        expect_silent(
+            obj <- get_b_inbr_bed_cpp( file_bed_miss, m, n, mean_kinship, NULL )
+        )
+        expect_equal( class( obj ), 'list' )
+        expect_equal( length( obj ), 2 )
+        expect_equal( names( obj ), c('b', 'inbr') )
+        expect_equal( obj$b, b_miss )
+        expect_equal( obj$inbr, inbr_est_miss )
 
         # version with individuals removed
         expect_silent(
@@ -529,6 +551,28 @@ if (
             KY_BM <- popkin_prod_bed( X = X_miss_BEDMatrix, P = Y, b = b_miss )
         )
         expect_equal( KY_miss, KY_BM )
+    })
+    
+    test_that("popkin_prod_bed_cpp matches direct product", {
+        # version with b present
+        # NULL = no individuals to remove
+        expect_silent(
+            KY_cpp <- popkin_prod_bed_cpp( file_bed, m, n, Y, b, NULL )
+        )
+        expect_equal( KY, KY_cpp )
+
+        # version with missingness, b present
+        # NULL = no individuals to remove
+        expect_silent(
+            KY_cpp <- popkin_prod_bed_cpp( file_bed_miss, m, n, Y, b_miss, NULL )
+        )
+        expect_equal( KY_miss, KY_cpp )
+
+        # version with individuals removed
+        expect_silent(
+            KY_cpp <- popkin_prod_bed_cpp( file_bed, m, n, Y_ind_rm, b_ind_rm, indexes_ind )
+        )
+        expect_equal( KY_ind_rm, KY_cpp )
     })
     
     test_that("conj_grad_scan_bed runs correctly on BEDMatrix data, recovers R matrix outputs", {

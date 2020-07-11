@@ -11,17 +11,20 @@
 // indexes_ind_rm: vector of indeces to remove (can be NULL)
 
 // [[Rcpp::export]]
-Rcpp::List get_b_inbr_bed_cpp(
-			      const char* file,
-			      std::vector<int>::size_type m_loci,
-			      std::vector<int>::size_type n_ind,
-			      double mean_kinship,
-			      Rcpp::Nullable<Rcpp::LogicalVector> indexes_ind_R
-			      ) {
+Rcpp::NumericMatrix popkin_prod_bed_cpp(
+					const char* file,
+					std::vector<int>::size_type m_loci,
+					std::vector<int>::size_type n_ind,
+					Rcpp::NumericMatrix P_R,
+					double b,
+					Rcpp::Nullable<Rcpp::LogicalVector> indexes_ind_R
+					) {
   // file must be full path (no missing extensions)
 
   // will need an index for individuals right away
   std::vector<int>::size_type j;
+  // and for covariates
+  std::vector<int>::size_type l;
 
   // sort out indexes_ind_rm, which in C++ is a mess (but we want reasonable R-like behavior on the outside)
   bool do_ind_filt = false;
@@ -38,7 +41,47 @@ Rcpp::List get_b_inbr_bed_cpp(
       indexes_ind_rm[ j ] = indexes_ind_R_good[ j ] == FALSE;
     }
   }
-    
+
+  // we won't validate things that came from R, let's just assume they're all consistent
+  // so here P_R gives us dimensions
+  // n_ind_kept equals the number of individuals kept according to indexes_ind_R
+  std::vector<int>::size_type n_ind_kept = P_R.nrow();
+  std::vector<int>::size_type k_covars = P_R.ncol();
+  // the product of both
+  std::vector<int>::size_type size_P = n_ind_kept * k_covars;
+
+  // might as well compute column sums of P, needed at the end
+  double* csP = new double[ k_covars ];
+  // first initialize all to zeroes
+  for ( l = 0; l < k_covars; l++ )
+    csP[ l ] = 0.0;
+  
+  // let's make a pure C++ copy of P, since we access it so much
+  double* P = new double[ size_P ];
+  // copy individual values
+  for ( j = 0; j < n_ind_kept; j++ ) {
+    for ( l = 0; l < k_covars; l++ ) {
+      // copy P over
+      P[ j * k_covars + l ] = P_R( j, l );
+      // compute column sums of P
+      csP[ l ] += P_R( j, l );
+    }
+  }
+  
+  // the output matrix, KP, has the same dimensions as P
+  // there's the pure C++ version, which we'll update often
+  double* KP = new double[ size_P ];
+  // initialize with zeroes
+  for ( j = 0; j < size_P; j++ )
+    KP[ j ] = 0.0;
+
+  // and an intermediate vector, this one is small
+  double* xP = new double[ k_covars ];
+  // initialize with zeroes
+  for ( j = 0; j < k_covars; j++ )
+    xP[ j ] = 0.0;
+  
+  
   // open input file in "binary" mode
   FILE *file_stream = fopen( file, "rb" );
   // die right away if needed, before initializing buffers etc
@@ -82,30 +125,6 @@ Rcpp::List get_b_inbr_bed_cpp(
     }
   }
 
-  // preallocate the things we want:
-  
-  // (1) a summary of the MAF variance across the genome
-  double b = 0.0;
-  // a denominator in case there are loci that are completely NA (after removal of individuals)
-  std::vector<int>::size_type m_loci_obs = m_loci; // decrement as we see NAs
-  // intermediates for b, to calculate allele frequencies
-  int x_sum = 0;
-  std::vector<int>::size_type x_num = n_ind; // decrement NAs, just as for inbr_num above (assuming NAs are rare, this is faster)
-  double x_mean;
-
-  // (2) intermeditates for inbr
-  // an uncorrected inbreeding coefficient estimate
-  std::vector<int>::size_type* inbr_sum = new std::vector<int>::size_type[ n_ind ];
-  // the number of non-NA cases, per individual
-  std::vector<int>::size_type* inbr_num = new std::vector<int>::size_type[ n_ind ];
-  // initialize
-  // NOTE: if there is an individual filter, we'll just skip calculating those values in the big genotype loop (not here)
-  for (j = 0; j < n_ind; j++) {
-    inbr_sum[ j ] = 0;
-    // all start as m_loci, will decrement later as we encounter NAs
-    inbr_num[ j ] = m_loci;
-  }
-  
   ////////////////////
   // read genotypes //
   ////////////////////
@@ -119,10 +138,15 @@ Rcpp::List get_b_inbr_bed_cpp(
   
   // navigate data and process
   std::vector<int>::size_type i;
-  std::vector<int>::size_type k; // to match n_buf type
+  std::vector<int>::size_type k;
+  std::vector<int>::size_type j_out;
   unsigned char buf_k; // working of buffer at k'th position
   unsigned char xij; // copy of extracted genotype
   for (i = 0; i < m_loci; i++) {
+    
+    // reset this one after every locus
+    for ( j = 0; j < k_covars; j++ )
+      xP[ j ] = 0;
     
     // read whole row into buffer
     n_buf_read = fread( buffer, sizeof(unsigned char), n_buf, file_stream );
@@ -143,10 +167,6 @@ Rcpp::List get_b_inbr_bed_cpp(
     // always reset these at start of row
     j = 0; // individuals
 
-    // reset things we need to get allele frequency
-    x_sum = 0;
-    x_num = n_ind; // decrement NAs, just as for inbr_num above (assuming NAs are rare, this is faster)
-      
     // navigate buffer positions k (not individuals j)
     for (k = 0; k < n_buf; k++) {
       
@@ -168,26 +188,25 @@ Rcpp::List get_b_inbr_bed_cpp(
 	  // (3 == 00000011 in binary)
 	  xij = buf_k & 3;
 	
-	  // handle cases (in original encoding; canonical encoding in comments)
+	  // handle cases (in original encoding; canonical encoding in comments, followed by x-1, setting NAs to zeroes too)
 	  // Homozygotes are more common, so test for those first
-	  // inbr_sum is incremented upon each homozygote only!
-	  // x_sum increments by ordinary xij, no need to overwrite xij at all
 	  if (xij == 0) {
-	    // xij = 2; // 0 -> 2
-	    x_sum += 2;
-	    inbr_sum[ j ]++;
+	    // xij = 2; // 0 -> 2 -> 1
+	    // so in this case all of the values of P, for this individual, get *added* onto xP
+	    for ( l = 0; l < k_covars; l++ )
+	      xP[ l ] += P[ j * k_covars + l ];
 	  } else if (xij == 3) {
-	    // xij = 0; // 3 -> 0
-	    inbr_sum[ j ]++;
-	  } else if (xij == 2) {
-	    // xij = 1; // 2 -> 1
-	    x_sum += 1;
-	  } else { // only case left is NA
-	    // xij = 0; // 1 -> NA
-	    // decrement non-NA count for this individual and locus, respectively
-	    inbr_num[ j ]--;
-	    x_num--;
+	    // xij = 0; // 3 -> 0 -> -1
+	    // and in this case all of the values of P, for this individual, get *subtracted* from xP
+	    for ( l = 0; l < k_covars; l++ )
+	      xP[ l ] -= P[ j * k_covars + l ];
 	  }
+	  // else nothing, as the remaining cases get multiplied by zeroes
+	  // else if (xij == 2) {
+	  //   // xij = 1; // 2 -> 1 -> 0
+	  // } else { // only case left is NA
+	  //   // xij = 0; // 1 -> NA -> 0
+	  // }
 	  
 	  // shift packed data, throwing away genotype we just processed
 	  buf_k = buf_k >> 2;
@@ -211,18 +230,78 @@ Rcpp::List get_b_inbr_bed_cpp(
     }
     // finished row
 
-    // finish processing terms for b
-    // calculate mean genotype now that we're done with this one locus
-    if ( x_num != 0 ) {
-      x_mean = static_cast<double>(x_sum) / x_num;
-      // update b running sum
-      b += x_mean * (2 - x_mean);
-    } else {
-      // NOTE: no observations treats this locus' contribution to b as zero, only happens if every individual that wasn't removed was NA
-      // in this case we decrement the denominator of b, for when we normalize it into a mean
-      m_loci_obs--;
+    // process buffer again!
+    // this is for the second part of the matrix product
+
+    // always reset these at start of row
+    j = 0; // individuals
+    j_out = 0; // inds, output (different because of skips)
+
+    // navigate buffer positions k (not individuals j)
+    for (k = 0; k < n_buf; k++) {
+      
+      // copy down this value, which will be getting edited
+      buf_k = buffer[k];
+
+      // navigate the four positions
+      // pos is just a dummy counter not really used except to know when to stop
+      // update j too, accordingly
+      for (pos = 0; pos < 4; pos++, j++) {
+
+	if (j < n_ind) {
+
+	  // skip individual from calculations if there's a filter and its removed in this filter
+	  if ( do_ind_filt && indexes_ind_rm[ j ] )
+	    continue;
+	  
+	  // extract current genotype using this mask
+	  // (3 == 00000011 in binary)
+	  xij = buf_k & 3;
+	
+	  // handle cases (in original encoding; canonical encoding in comments, followed by x-1, setting NAs to zeroes too)
+	  // Homozygotes are more common, so test for those first
+	  if (xij == 0) {
+	    // xij = 2; // 0 -> 2 -> 1
+	    // so in this case all of the values of xP, for this individual, get *added* onto KP
+	    for ( l = 0; l < k_covars; l++ )
+	      KP[ j_out * k_covars + l ] += xP[ l ];
+	  } else if (xij == 3) {
+	    // xij = 0; // 3 -> 0 -> -1
+	    // and in this case all of the values of xP, for this individual, get *subtracted* from KP
+	    for ( l = 0; l < k_covars; l++ )
+	      KP[ j_out * k_covars + l ] -= xP[ l ];
+	  }
+	  // else nothing, as the remaining cases get multiplied by zeroes
+	  // else if (xij == 2) {
+	  //   // xij = 1; // 2 -> 1 -> 0
+	  // } else { // only case left is NA
+	  //   // xij = 0; // 1 -> NA -> 0
+	  // }
+	  
+	  // shift packed data, throwing away genotype we just processed
+	  buf_k = buf_k >> 2;
+	  // increment individuals that weren't skipped, and only after we were done processing the individual
+	  j_out++;
+	} else {
+	  // when j is out of range, we're in the padding data now
+	  // as an extra sanity check, the remaining data should be all zero (that's how the encoding is supposed to work)
+	  // non-zero values would strongly suggest that n_ind was not set correctly
+	  if (buf_k != 0) {
+	    // wrap up everything properly
+	    delete [] buffer; // free buffer memory
+	    fclose( file_stream ); // close file
+	    // now send error message to R
+	    char msg[200];
+	    sprintf(msg, "Row %ld padding was non-zero.  Either the specified number of individuals is incorrect or the input file is corrupt!", i+1); // convert to 1-based coordinates
+	    Rcpp::stop(msg);
+	  }
+	}
+      }
+      // finished byte
+      
     }
-    
+    // finished row
+
   }
   // finished matrix!
 
@@ -238,49 +317,24 @@ Rcpp::List get_b_inbr_bed_cpp(
     Rcpp::stop("Input BED file continued after all requested rows were read!  Either the specified the number of loci was too low or the input file is corrupt!");
   }
 
-  // do some final processing of b
-  // this includes all final steps, including the mean_kinship correction
-  b = ( 1.0 - ( b / m_loci_obs ) - mean_kinship ) / ( 1.0 - mean_kinship );
-  // create R version
-  Rcpp::NumericVector bR(1);
-  bR[ 0 ] = b;
-
-  // to have output length right, count the number of individuals we're keeping
-  std::vector<int>::size_type n_ind_kept = n_ind; // decrement
-  if ( do_ind_filt ) {
-    for (j = 0; j < n_ind; j++) {
-      if ( indexes_ind_rm[ j ] )
-	n_ind_kept--;
-    }
-  }
-  
-  // final inbreeding vector
-  // NOTE: contains only individuals that were not removed!
-  Rcpp::NumericVector inbr(n_ind_kept);
-  // the inbreeding data also now gets normalized fully, which requires the b above
-  // we reuse i to indicate the output index
-  i = 0;
-  for (j = 0; j < n_ind; j++) {
-    // skip individual if needed
-    if ( do_ind_filt && indexes_ind_rm[ j ] )
-      continue;
-    // otherwise add to vector
-    inbr[ i ] = ( ( 2.0 * inbr_sum[ j ] ) / inbr_num[ j ] - 1.0 - b ) / ( 1.0 - b );
-    // increment output counter (only happens if individual wasn't skipped)
-    i++;
-  }
+  // the R version of KP to return
+  Rcpp::NumericMatrix KP_R( n_ind_kept, k_covars );
+  // copy individual values back
+  // also complete final step in KP calculation
+  // - normalize by m_loci
+  // - subtract b * colSums( P ) along the rows
+  // - normalize by ( 1 - b )
+  for ( j = 0; j < n_ind_kept; j++ )
+    for ( l = 0; l < k_covars; l++ )
+      KP_R( j, l ) = ( KP[ j * k_covars + l ] / m_loci - b * csP[ l ] ) / ( 1 - b );
 
   // free intermediate objects now
-  delete [] inbr_sum;
-  delete [] inbr_num;
   delete [] indexes_ind_rm;
-
-  // should return b and inbr together in an R List
-  Rcpp::List ret_list = Rcpp::List::create(
-					   Rcpp::Named("b") = bR,
-					   Rcpp::Named("inbr") = inbr
-					   );
+  delete [] P;
+  delete [] csP;
+  delete [] xP;
+  delete [] KP;
   
-  // return genotype matrix
-  return ret_list;
+  // return R version of KP matrix
+  return KP_R;
 }
