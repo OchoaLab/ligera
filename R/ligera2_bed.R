@@ -21,7 +21,6 @@ NULL
 #' Note memory usage is somewhat underestimated and is not controlled strictly.
 #' Default in Linux and Windows is `mem_factor` times the free system memory, otherwise it is 1GB (OSX and other systems).
 #' @param tol Tolerance value passed to conjugate gradient method solver.
-#' @param verbose If TRUE, reports on iterations progress (for debugging)
 #'
 #' @return A tibble containing the following association statistics
 #' 
@@ -59,8 +58,7 @@ ligera2_bed <- function(
                         mean_kinship,
                         mem_factor = 0.7,
                         mem_lim = NA,
-                        tol = 1e-15,
-                        verbose = FALSE
+                        tol = 1e-15
                         ) {
     # - supports missingness in trait
     # TODO
@@ -118,8 +116,6 @@ ligera2_bed <- function(
     
     # calculate b and inbr with this fast code
     # (this scans the whole BED file once)
-    if ( verbose )
-        message( 'get_b_inbr_bed_cpp' )
     obj <- get_b_inbr_bed_cpp(
         file,
         m_loci,
@@ -131,8 +127,6 @@ ligera2_bed <- function(
     inbr <- obj$inbr
     
     # only two things have to be solved, all vectors
-    if ( verbose )
-        message( 'conj_grad_scan_bed' )
     Y <- cbind( trait, 1 )
     Z <- conj_grad_scan_bed_wcpp(
         file = file,
@@ -141,19 +135,8 @@ ligera2_bed <- function(
         Y = Y,
         b = b,
         indexes_ind = indexes_ind,
-        tol = tol,
-        verbose = verbose
+        tol = tol
     )
-    if ( verbose )
-        print( 'conj_grad_scan_bed DONE!' )
-    ## Z <- conj_grad_scan_bed(
-    ##     X = X,
-    ##     Y = Y,
-    ##     b = b,
-    ##     indexes_ind = indexes_ind,
-    ##     tol = tol,
-    ##     verbose = verbose
-    ## )
     PhiInvy <- Z[ , 1 ]
     PhiInv1 <- Z[ , 2 ]
     
@@ -211,9 +194,6 @@ ligera2_bed <- function(
                          mem_factor = mem_factor
                      )
     m_chunk <- data$m_chunk
-
-    if ( verbose )
-        message( 'Started GAS scan!' )
 
     # navigate chunks
     i_chunk <- 1 # start of first chunk (needed for matrix inputs only; as opposed to function inputs)

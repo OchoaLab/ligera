@@ -19,8 +19,7 @@ conj_grad_scan_bed_wcpp <- function(
                                     Y,
                                     b,
                                     indexes_ind = NULL,
-                                    tol = 1e-15,
-                                    verbose = FALSE
+                                    tol = 1e-15
                                     ) {
     # validations
     if ( missing( file ) )
@@ -69,28 +68,9 @@ conj_grad_scan_bed_wcpp <- function(
     # different covariate columns may converge at different times, let's keep track of that
     not_converged <- rep.int( TRUE, k_covars )
 
-    if ( verbose )
-        iter <- 0
-
-    # DEBUG
-    if ( verbose ) {
-        print( paste0( 'n_ind_kept: ', n_ind_kept ) )
-        print( paste0( 'b: ', b ) )
-        print( paste0( 'colMeans(Y): ', toString( colMeans(Y) ) ) )
-    }
-    
     # start loop
     while ( any( not_converged ) ) {
         # P and R matrices are always non-converged subsets!
-
-        # for info
-        if ( verbose ) {
-            iter <- iter + 1
-            if (iter < 3) {
-                print( paste0( 'iter: ', iter ) )
-                print( paste0( 'Rn: ', toString( Rn ) ) )
-            }
-        }
 
         # NOTE: this is the slowest part!
         KP <- popkin_prod_bed_cpp(

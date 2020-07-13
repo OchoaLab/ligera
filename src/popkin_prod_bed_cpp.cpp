@@ -23,8 +23,12 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
 
   // will need an index for individuals right away
   std::vector<int>::size_type j;
+  // and individuals kept (go up to n_ind_kept instead of n_ind; differ when individuals are removed)
+  std::vector<int>::size_type j_kept;
   // and for covariates
   std::vector<int>::size_type l;
+  // recurrent product of j_kept * k_covars, used tp access P and write to KP
+  std::vector<int>::size_type jK;
 
   // sort out indexes_ind_rm, which in C++ is a mess (but we want reasonable R-like behavior on the outside)
   bool do_ind_filt = false;
@@ -59,12 +63,13 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
   // let's make a pure C++ copy of P, since we access it so much
   double* P = new double[ size_P ];
   // copy individual values
-  for ( j = 0; j < n_ind_kept; j++ ) {
+  for ( j_kept = 0; j_kept < n_ind_kept; j_kept++ ) {
+    jK = j_kept * k_covars;
     for ( l = 0; l < k_covars; l++ ) {
       // copy P over
-      P[ j * k_covars + l ] = P_R( j, l );
+      P[ jK + l ] = P_R( j_kept, l );
       // compute column sums of P
-      csP[ l ] += P_R( j, l );
+      csP[ l ] += P_R( j_kept, l );
     }
   }
   
@@ -78,8 +83,8 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
   // and an intermediate vector, this one is small
   double* xP = new double[ k_covars ];
   // initialize with zeroes
-  for ( j = 0; j < k_covars; j++ )
-    xP[ j ] = 0.0;
+  for ( l = 0; l < k_covars; l++ )
+    xP[ l ] = 0.0;
   
   
   // open input file in "binary" mode
@@ -139,14 +144,13 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
   // navigate data and process
   std::vector<int>::size_type i;
   std::vector<int>::size_type k;
-  std::vector<int>::size_type j_out;
   unsigned char buf_k; // working of buffer at k'th position
   unsigned char xij; // copy of extracted genotype
   for (i = 0; i < m_loci; i++) {
     
     // reset this one after every locus
-    for ( j = 0; j < k_covars; j++ )
-      xP[ j ] = 0;
+    for ( l = 0; l < k_covars; l++ )
+      xP[ l ] = 0;
     
     // read whole row into buffer
     n_buf_read = fread( buffer, sizeof(unsigned char), n_buf, file_stream );
@@ -166,7 +170,8 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
 
     // always reset these at start of row
     j = 0; // individuals
-
+    j_kept = 0; // kept inds (different because of skips)
+    
     // navigate buffer positions k (not individuals j)
     for (k = 0; k < n_buf; k++) {
       
@@ -184,7 +189,7 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
 	  // skip individual from calculations if there's a filter and its removed in this filter
 	  if ( do_ind_filt && indexes_ind_rm[ j ] )
 	    continue;
-	  
+
 	  // extract current genotype using this mask
 	  // (3 == 00000011 in binary)
 	  xij = buf_k & 3;
@@ -194,13 +199,17 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
 	  if (xij == 0) {
 	    // xij = 2; // 0 -> 2 -> 1
 	    // so in this case all of the values of P, for this individual, get *added* onto xP
+	    // update this index
+	    jK = j_kept * k_covars;
 	    for ( l = 0; l < k_covars; l++ )
-	      xP[ l ] += P[ j * k_covars + l ];
+	      xP[ l ] += P[ jK + l ];
 	  } else if (xij == 3) {
 	    // xij = 0; // 3 -> 0 -> -1
 	    // and in this case all of the values of P, for this individual, get *subtracted* from xP
+	    // update this index
+	    jK = j_kept * k_covars;
 	    for ( l = 0; l < k_covars; l++ )
-	      xP[ l ] -= P[ j * k_covars + l ];
+	      xP[ l ] -= P[ jK + l ];
 	  }
 	  // else nothing, as the remaining cases get multiplied by zeroes
 	  // else if (xij == 2) {
@@ -208,6 +217,9 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
 	  // } else { // only case left is NA
 	  //   // xij = 0; // 1 -> NA -> 0
 	  // }
+	  
+	  // increment individuals that weren't skipped, and only after we were done processing the individual
+	  j_kept++;
 	} else {
 	  // when j is out of range, we're in the padding data now
 	  // as an extra sanity check, the remaining data should be all zero (that's how the encoding is supposed to work)
@@ -233,7 +245,7 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
 
     // always reset these at start of row
     j = 0; // individuals
-    j_out = 0; // inds, output (different because of skips)
+    j_kept = 0; // kept inds (different because of skips)
 
     // navigate buffer positions k (not individuals j)
     for (k = 0; k < n_buf; k++) {
@@ -262,13 +274,17 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
 	  if (xij == 0) {
 	    // xij = 2; // 0 -> 2 -> 1
 	    // so in this case all of the values of xP, for this individual, get *added* onto KP
+	    // update this index
+	    jK = j_kept * k_covars;
 	    for ( l = 0; l < k_covars; l++ )
-	      KP[ j_out * k_covars + l ] += xP[ l ];
+	      KP[ jK + l ] += xP[ l ];
 	  } else if (xij == 3) {
 	    // xij = 0; // 3 -> 0 -> -1
 	    // and in this case all of the values of xP, for this individual, get *subtracted* from KP
+	    // update this index
+	    jK = j_kept * k_covars;
 	    for ( l = 0; l < k_covars; l++ )
-	      KP[ j_out * k_covars + l ] -= xP[ l ];
+	      KP[ jK + l ] -= xP[ l ];
 	  }
 	  // else nothing, as the remaining cases get multiplied by zeroes
 	  // else if (xij == 2) {
@@ -278,7 +294,7 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
 	  // }
 	  
 	  // increment individuals that weren't skipped, and only after we were done processing the individual
-	  j_out++;
+	  j_kept++;
 	} else {
 	  // when j is out of range, we're in the padding data now
 	  // as an extra sanity check, the remaining data should be all zero (that's how the encoding is supposed to work)
@@ -321,10 +337,12 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
   // - normalize by m_loci
   // - subtract b * colSums( P ) along the rows
   // - normalize by ( 1 - b )
-  for ( j = 0; j < n_ind_kept; j++ )
+  for ( j_kept = 0; j_kept < n_ind_kept; j_kept++ ) {
+    jK = j_kept * k_covars;
     for ( l = 0; l < k_covars; l++ )
-      KP_R( j, l ) = ( KP[ j * k_covars + l ] / m_loci - b * csP[ l ] ) / ( 1 - b );
-
+      KP_R( j_kept, l ) = ( KP[ jK + l ] / m_loci - b * csP[ l ] ) / ( 1 - b );
+  }
+  
   // free intermediate objects now
   delete [] indexes_ind_rm;
   delete [] P;
