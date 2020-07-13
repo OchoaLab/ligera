@@ -5,3 +5,8 @@
 # 2020-07-09 - ligera 1.0.1.9000
 
 * Added `ligera2`, which implements full "BOLT trick" to avoid having to calculate kinship explicitly, and which scales as $O( m n \sqrt{\kappa} )$ instead of $O( mn^2 + n^2 \sqrt{\kappa} )$, which is far better as n increases.
+
+# 2020-07-13 - ligera 1.0.2.9000
+
+* Added `ligera2_bed`, a version of `ligera2` specific to plink BED files sped up with Rcpp code for critical components!
+
