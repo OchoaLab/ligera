@@ -97,13 +97,15 @@ ligera2_bed <- function(
     # the good thing is that this is shared across loci, so comparably it's not so expensive
     # this NULL means there are no filters to apply
     indexes_ind <- NULL
+    # differentiate between total individuals (in BED file) and indivdiuals kept after trait-NA filters (need both values)
+    n_ind_kept <- n_ind
     if ( anyNA( trait ) ) {
         # indexes to keep (need to subset genotypes at load time)
         indexes_ind <- !is.na( trait )
         # subset trait
         trait <- trait[ indexes_ind ]
         # reduce number of individuals, used in some calculations
-        n_ind <- length( trait )
+        n_ind_kept <- length( trait )
         # NOTE: only genotypes are left to filter with indexes_ind
     }
 
@@ -132,14 +134,26 @@ ligera2_bed <- function(
     if ( verbose )
         message( 'conj_grad_scan_bed' )
     Y <- cbind( trait, 1 )
-    Z <- conj_grad_scan_bed(
-        X = X,
+    Z <- conj_grad_scan_bed_wcpp(
+        file = file,
+        m_loci = m_loci,
+        n_ind = n_ind,
         Y = Y,
         b = b,
         indexes_ind = indexes_ind,
         tol = tol,
         verbose = verbose
     )
+    if ( verbose )
+        print( 'conj_grad_scan_bed DONE!' )
+    ## Z <- conj_grad_scan_bed(
+    ##     X = X,
+    ##     Y = Y,
+    ##     b = b,
+    ##     indexes_ind = indexes_ind,
+    ##     tol = tol,
+    ##     verbose = verbose
+    ## )
     PhiInvy <- Z[ , 1 ]
     PhiInv1 <- Z[ , 2 ]
     
@@ -226,7 +240,7 @@ ligera2_bed <- function(
         
         # the coefficients are simply the genotypes projected!
         # adjust for the NAs? (not sure if this is reasonable or not yet)
-        beta[ indexes_loci_chunk ] <- drop( Xi %*% proj ) * n_ind / n_ind_no_NA
+        beta[ indexes_loci_chunk ] <- drop( Xi %*% proj ) * n_ind_kept / n_ind_no_NA
         
         ###########################
         ### VARIANCE ESTIMATION ###
@@ -268,7 +282,7 @@ ligera2_bed <- function(
     # Get naive p-values assuming a null t-distribution with the obvious degrees of freedom
     # so far I know this is wrong (the true tails are longer), may need to adjust the degrees of freedom (not yet known how exactly)
     # NOTE: two-sided test!
-    pval <- 2 * stats::pt(-abs(t_stat), n_ind-1)
+    pval <- 2 * stats::pt( -abs( t_stat ), n_ind_kept - 1 )
 
     # done, return quantities of interest (nice table!)
     return(

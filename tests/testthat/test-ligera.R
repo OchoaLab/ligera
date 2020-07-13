@@ -33,7 +33,7 @@ trait_miss <- trait # copy first
 # repeat until we have at least one NA, otherwise this test doesn't serve its purpose
 while ( !anyNA( trait_miss ) ) 
     trait_miss[ sample( n, n * miss ) ] <- NA
-indexes_ind <- !is.na( trait ) # to test for ind removals
+indexes_ind <- !is.na( trait_miss ) # to test for ind removals
 Y_ind_rm <- Y[ indexes_ind , ]
 
 # for ligera2 (full BOLT-like trick)
@@ -48,11 +48,10 @@ expect_true( !anyNA( inbr_est ) )
 
 # version of b and inbr_est with ind removals (but no X missingness, first)
 x_bar <- rowMeans( X[ , indexes_ind ] ) # overwrite x_bar, not reused elsewhere
-b_ind_rm <- (1 - mean( x_bar * ( 2 - x_bar ) ) - mean_kinship ) / ( 1 - mean_kinship )
+b_ind_rm <- mean( x_bar * ( 2 - x_bar ) ) # compute in two parts for troubleshooting
+b_ind_rm <- (1 - b_ind_rm - mean_kinship ) / ( 1 - mean_kinship )
 kinship_est_ind_rm <- ( crossprod( X[ , indexes_ind ] - 1 ) / m - b_ind_rm ) / ( 1 - b_ind_rm ) # here we do normalize properly for a plot
 inbr_est_ind_rm <- inbr( kinship_est_ind_rm ) # for a comparison
-# a basic validation
-expect_true( !anyNA( inbr_est_ind_rm ) )
 
 # true product for tests
 KY <- kinship_est %*% Y    
@@ -66,8 +65,27 @@ expect_true( !anyNA( Z ) )
 KY_ind_rm <- kinship_est_ind_rm %*% Y_ind_rm
 # compare to vanilla `solve` (using actual inversion, which is least scalable solution)
 Z_ind_rm <- solve( kinship_est_ind_rm, Y_ind_rm )
-# a basic validation
-expect_true( !anyNA( Z_ind_rm ) )
+
+test_that("trait missingness is as desired", {
+    # I had simulated this wrong, it was terrible, it deserves its own tests
+    n_ind_kept <- sum( !is.na( trait_miss ) )
+    # we should have repeated drawing above, until there was at least one NA, so this is a strict inequality
+    expect_true( n_ind_kept < n )
+    # check that the other items above agree
+    expect_equal( n_ind_kept, sum( indexes_ind ) )
+    expect_equal( n_ind_kept, nrow( Y_ind_rm ) )
+    expect_equal( n_ind_kept, ncol( kinship_est_ind_rm ) )
+    expect_equal( n_ind_kept, nrow( kinship_est_ind_rm ) )
+    expect_equal( n_ind_kept, length( inbr_est_ind_rm ) )
+    expect_equal( n_ind_kept, nrow( KY_ind_rm ) )
+    expect_equal( n_ind_kept, nrow( Z_ind_rm ) )
+    # other basic validations
+    expect_true( !anyNA( b_ind_rm ) )
+    expect_true( !anyNA( kinship_est_ind_rm ) )
+    expect_true( !anyNA( inbr_est_ind_rm ) )
+    expect_true( !anyNA( KY_ind_rm ) )
+    expect_true( !anyNA( Z_ind_rm ) )
+})
 
 # missingness versions
 x_bar_miss <- rowMeans( X_miss, na.rm = TRUE )
@@ -129,7 +147,7 @@ test_that("ligera runs on random data without missingness, matches basic version
     expect_true( all( tib1$pval <= 1 ) )
     expect_true( all( tib1$beta_std_dev > 0 ) )
     expect_true( all( tib1$p_q > 0 ) )
-#    expect_true( all( tib1$p_q < 1 ) ) # because of inbreeding weights, there is no upper limit technically
+    #    expect_true( all( tib1$p_q < 1 ) ) # because of inbreeding weights, there is no upper limit technically
 
     # this is the basic version (requires non-missingness, so it can only be compared here)
     tib_basic <- ligera_basic( X, trait, kinship, solve(kinship) )
@@ -255,15 +273,23 @@ test_that("conj_grad_scan matches solve", {
     expect_equal( Z, obj$Z )
     # ditto direct computation
     expect_equal( inbr_est, obj$inbr )
-})
-
-test_that("conj_grad_scan works with missingness in X", {
-    # here we just want to know that missingness in X doesn't result in missingness in outputs
     
+    # here we just want to know that missingness in X doesn't result in missingness in outputs
     obj <- conj_grad_scan( X = X_miss, Y = Y, mean_kinship = mean_kinship )
     # compare to precomputed values
     expect_equal( Z_miss, obj$Z )
     expect_equal( inbr_est_miss, obj$inbr )
+
+    # now test missingness in trait! (individuals removed)
+    obj <- conj_grad_scan(
+        X = X,
+        Y = Y_ind_rm,
+        mean_kinship = mean_kinship,
+        indexes_ind = indexes_ind
+    )
+    # compare to precomputed values
+    expect_equal( Z_ind_rm, obj$Z )
+    expect_equal( inbr_est_ind_rm, obj$inbr ) # TODO
 })
 
 test_that("ligera2 stops when needed", {
@@ -309,7 +335,7 @@ test_that("ligera2 runs on random data without missingness, matches basic versio
     expect_true( all( tib5$pval <= 1 ) )
     expect_true( all( tib5$beta_std_dev > 0 ) )
     expect_true( all( tib5$p_q > 0 ) )
-#    expect_true( all( tib1$p_q < 1 ) ) # because of inbreeding weights, there is no upper limit technically
+    #    expect_true( all( tib1$p_q < 1 ) ) # because of inbreeding weights, there is no upper limit technically
 
     # this is the basic version (requires non-missingness, so it can only be compared here)
     tib5_basic <- ligera_basic( X, trait, kinship_est, solve(kinship_est) )
@@ -331,7 +357,8 @@ test_that("ligera2 runs on random data with missingness in X", {
 })
 
 test_that("ligera2 runs on random data with missingness in trait", {
-    expect_silent( tib7 <- ligera2( X = X, trait = trait_miss, mean_kinship = mean_kinship ) )
+    # NOTE: use <<- to remember variable globally (outside this scope)
+    expect_silent( tib7 <<- ligera2( X = X, trait = trait_miss, mean_kinship = mean_kinship ) )
     expect_true( is_tibble( tib7 ) )
     expect_equal( names( tib7 ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat') )
     expect_equal( nrow( tib7 ), m )
@@ -428,8 +455,18 @@ test_that("conj_grad_scan_bed matches solve", {
     expect_equal( Z, Z_scan )
     
     # then with missingness
-    Z_miss_scan <- conj_grad_scan_bed( X = X_miss, Y = Y, b = b_miss )
-    expect_equal( Z_miss, Z_miss_scan )
+    Z_scan <- conj_grad_scan_bed( X = X_miss, Y = Y, b = b_miss )
+    expect_equal( Z_miss, Z_scan )
+
+    # now test missingness in trait! (individuals removed)
+    Z_scan <- conj_grad_scan_bed(
+        X = X,
+        Y = Y_ind_rm,
+        b = b_ind_rm,
+        indexes_ind = indexes_ind
+    )
+    # compare to precomputed values
+    expect_equal( Z_ind_rm, Z_scan )
 })
 
 # test BEDMatrix version, which also requires us to write the random data out (with genio)
@@ -486,10 +523,23 @@ if (
         expect_equal( inbr_est, obj$inbr )
         
         expect_silent(
-                obj <- conj_grad_scan( X = X_miss_BEDMatrix, Y = Y, mean_kinship = mean_kinship )
+            obj <- conj_grad_scan( X = X_miss_BEDMatrix, Y = Y, mean_kinship = mean_kinship )
         )
         expect_equal( Z_miss, obj$Z )
         expect_equal( inbr_est_miss, obj$inbr )
+
+        # now test missingness in trait! (individuals removed)
+        expect_silent(
+            obj <- conj_grad_scan(
+                X = X_BEDMatrix,
+                Y = Y_ind_rm,
+                mean_kinship = mean_kinship,
+                indexes_ind = indexes_ind
+            )
+        )
+        # compare to precomputed values
+        expect_equal( Z_ind_rm, obj$Z )
+        expect_equal( inbr_est_ind_rm, obj$inbr )
     })
 
     test_that("ligera2 runs correctly on BEDMatrix data, recovers R matrix outputs", {
@@ -529,14 +579,15 @@ if (
         expect_equal( obj$inbr, inbr_est_miss )
 
         # version with individuals removed
+        print( 'get_b_inbr_bed_cpp (ind_rm)...' )
         expect_silent(
             obj <- get_b_inbr_bed_cpp( file_bed, m, n, mean_kinship, indexes_ind )
         )
         expect_equal( class( obj ), 'list' )
         expect_equal( length( obj ), 2 )
         expect_equal( names( obj ), c('b', 'inbr') )
-        expect_equal( obj$b, b_ind_rm )
-        expect_equal( obj$inbr, inbr_est_ind_rm )
+        expect_equal( obj$b, b_ind_rm ) # TODO: FAIL
+        expect_equal( obj$inbr, inbr_est_ind_rm ) # TODO: FAIL
     })
     
     test_that("popkin_prod_bed matches direct product", {
@@ -548,9 +599,20 @@ if (
 
         # version with missingness, b present
         expect_silent(
-            KY_BM <- popkin_prod_bed( X = X_miss_BEDMatrix, P = Y, b = b_miss )
+            KY_miss_BM <- popkin_prod_bed( X = X_miss_BEDMatrix, P = Y, b = b_miss )
         )
-        expect_equal( KY_miss, KY_BM )
+        expect_equal( KY_miss, KY_miss_BM )
+
+        # version with individuals removed
+        expect_silent(
+            KY_ind_rm_BM <- popkin_prod_bed(
+                X = X_BEDMatrix,
+                P = Y_ind_rm,
+                b = b_ind_rm,
+                indexes_ind = indexes_ind
+            )
+        )
+        expect_equal( KY_ind_rm, KY_ind_rm_BM )
     })
     
     test_that("popkin_prod_bed_cpp matches direct product", {
@@ -564,49 +626,122 @@ if (
         # version with missingness, b present
         # NULL = no individuals to remove
         expect_silent(
-            KY_cpp <- popkin_prod_bed_cpp( file_bed_miss, m, n, Y, b_miss, NULL )
+            KY_miss_cpp <- popkin_prod_bed_cpp( file_bed_miss, m, n, Y, b_miss, NULL )
         )
-        expect_equal( KY_miss, KY_cpp )
+        expect_equal( KY_miss, KY_miss_cpp )
 
         # version with individuals removed
+        print( 'popkin_prod_bed_cpp (ind_rm)...' )
         expect_silent(
-            KY_cpp <- popkin_prod_bed_cpp( file_bed, m, n, Y_ind_rm, b_ind_rm, indexes_ind )
+            KY_ind_rm_cpp <- popkin_prod_bed_cpp( file_bed, m, n, Y_ind_rm, b_ind_rm, indexes_ind )
         )
-        expect_equal( KY_ind_rm, KY_cpp )
+        expect_equal( KY_ind_rm, KY_ind_rm_cpp )
     })
     
-    test_that("conj_grad_scan_bed runs correctly on BEDMatrix data, recovers R matrix outputs", {
+    test_that("conj_grad_scan_bed runs correctly on BEDMatrix", {
+        # this one compares to Z
+#        expect_silent(
+            Z_BM <- conj_grad_scan_bed( X = X_BEDMatrix, Y = Y, b = b )
+#        )
+        expect_equal( Z, Z_BM )
+        
+        # and this one compares to Z_miss
+#        expect_silent(
+            Z_miss_BM <- conj_grad_scan_bed( X = X_miss_BEDMatrix, Y = Y, b = b_miss )
+#        )
+        expect_equal( Z_miss, Z_miss_BM )
+        
+        # now test missingness in trait! (individuals removed)
+        print( 'conj_grad_scan_bed (ind_rm)...' )
+        #        expect_silent(
+        Z_ind_rm_BM <- conj_grad_scan_bed(
+            X = X_BEDMatrix,
+            Y = Y_ind_rm,
+            b = b_ind_rm,
+            indexes_ind = indexes_ind,
+            verbose = TRUE
+        )
+        #        )
+        # compare to precomputed values
+        expect_equal( Z_ind_rm, Z_ind_rm_BM )
+    })
+    
+    test_that("conj_grad_scan_bed_wcpp matches precomputed values", {
         # this one compares to Z
         expect_silent(
-            Z_BM <- conj_grad_scan_bed( X = X_BEDMatrix, Y = Y, b = b )
+            Z_BM <- conj_grad_scan_bed_wcpp(
+                file = file_bed,
+                m_loci = m,
+                n_ind = n,
+                Y = Y,
+                b = b
+            )
         )
         expect_equal( Z, Z_BM )
         
         # and this one compares to Z_miss
         expect_silent(
-                Z_BM <- conj_grad_scan_bed( X = X_miss_BEDMatrix, Y = Y, b = b_miss )
+            Z_miss_BM <- conj_grad_scan_bed_wcpp(
+                file = file_bed_miss,
+                m_loci = m,
+                n_ind = n,
+                Y = Y,
+                b = b_miss
+            )
         )
-        expect_equal( Z_miss, Z_BM )
+        expect_equal( Z_miss, Z_miss_BM )
+
+        ## TODO: often not converging!
+        ## # this one has individuals removed
+        ## print( 'conj_grad_scan_bed_wcpp...' )
+        ## #        expect_silent(
+        ## Z_ind_rm_BM <- conj_grad_scan_bed_wcpp(
+        ##     file = file_bed,
+        ##     m_loci = m,
+        ##     n_ind = n,
+        ##     Y = Y_ind_rm,
+        ##     b = b_ind_rm,
+        ##     indexes_ind = indexes_ind,
+        ##     verbose = TRUE
+        ## )
+        ## #        )
+        ## expect_equal( Z_ind_rm, Z_ind_rm_BM )
     })
-    
+
     test_that("ligera2_bed recovers R matrix outputs", {
+        print('tib5_bed...')
         tib5_bed <- ligera2_bed(
             file = name,
             m_loci = m,
             n_ind = n,
             trait = trait,
-            mean_kinship = mean_kinship
+            mean_kinship = mean_kinship #,
+#            verbose = TRUE
         )
         expect_equal( tib5, tib5_bed )
         
+        print('tib6_bed...')
         tib6_bed <- ligera2_bed(
             file = name_miss,
             m_loci = m,
             n_ind = n,
             trait = trait,
-            mean_kinship = mean_kinship
+            mean_kinship = mean_kinship #,
+#            verbose = TRUE
         )
         expect_equal( tib6, tib6_bed )
+
+        # TODO: not converging :(
+##         print('tib7_bed...')
+##         tib7_bed <- ligera2_bed(
+##             file = name,
+##             m_loci = m,
+##             n_ind = n,
+##             trait = trait_miss,
+##             mean_kinship = mean_kinship #,
+## #            verbose = TRUE
+##         )
+##         expect_equal( tib7, tib7_bed )
     })
 
     # delete temporary files now

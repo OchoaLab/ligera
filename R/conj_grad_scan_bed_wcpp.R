@@ -12,27 +12,25 @@
 # but here kinship is implicitly given by X
 #
 # this version doesn't calculate b, inbr internally, requires external b instead
-conj_grad_scan_bed <- function(
-                               X,
-                               Y,
-                               b,
-                               indexes_ind = NULL,
-                               tol = 1e-15,
-                               n_data_cut = 1e6, # block size limit for BEDMatrix
-                               loci_on_cols = FALSE,
-                               verbose = FALSE
-                               ) {
+conj_grad_scan_bed_wcpp <- function(
+                                    file,
+                                    m_loci,
+                                    n_ind, # number of individuals in BED file (may be less than kept individuals in Y or indexes_ind)
+                                    Y,
+                                    b,
+                                    indexes_ind = NULL,
+                                    tol = 1e-15,
+                                    verbose = FALSE
+                                    ) {
     # validations
-    if ( missing( X ) )
-        stop( '`X` genotype matrix is required!' )
+    if ( missing( file ) )
+        stop( 'Genotype BED file `file` is required!' )
     if ( missing( Y ) )
         stop( '`Y` covariates matrix is required!' )
     if ( missing( b ) )
         stop( '`b` scalar is required!' )
 
-    # validate X, Y, b
-    if ( !is.matrix(X) ) # TRUE for BEDMatrix
-        stop( '`X` must be a matrix!' )
+    # validate Y, b
     if ( !is.matrix(Y) )
         stop( '`Y` must be a matrix!' )
     if ( length( b ) != 1 )
@@ -40,14 +38,18 @@ conj_grad_scan_bed <- function(
     if ( !is.numeric(b) )
         stop( '`b` must be numeric!' )
 
-    # force loci on columns here
-    if ( 'BEDMatrix' %in% class( X ) )
-        loci_on_cols <- TRUE
-
     # get dimensions from Y
     n_ind_kept <- nrow( Y )
     k_covars <- ncol( Y )
-    # NOTE: X gets validated (repeatedly) in popkin_prod
+    # NOTE: the BED file gets validated (repeatedly) in popkin_prod_bed_cpp
+    # indexes_ind should match n_ind_kept...
+    if ( !is.null( indexes_ind ) ) {
+        if ( length( indexes_ind ) != n_ind )
+            stop( 'Number of individuals disagrees between BED (', n_ind, ') and length of indexes_ind (', length( indexes_ind ), ')!' )
+        if ( sum( indexes_ind ) != n_ind_kept )
+            stop( 'Number of individuals kept disagrees between Y (', n_ind_kept, ') and indexes_ind (', sum( indexes_ind ), ')!' )
+    }
+    
 
     # starting point for solution is all zeroes
     # same dim as Y
@@ -69,7 +71,7 @@ conj_grad_scan_bed <- function(
 
     if ( verbose )
         iter <- 0
-    
+
     # DEBUG
     if ( verbose ) {
         print( paste0( 'n_ind_kept: ', n_ind_kept ) )
@@ -91,13 +93,13 @@ conj_grad_scan_bed <- function(
         }
 
         # NOTE: this is the slowest part!
-        KP <- popkin_prod_bed(
-            X = X,
-            P = P,
-            b = b,
-            indexes_ind = indexes_ind,
-            n_data_cut = n_data_cut, # block size limit for BEDMatrix
-            loci_on_cols = loci_on_cols
+        KP <- popkin_prod_bed_cpp(
+            file,
+            m_loci,
+            n_ind, # number of individuals in BED file, not kept
+            P,
+            b,
+            indexes_ind
         )
         
         # now continue to update variables in the CG iterations, vectorized if possible

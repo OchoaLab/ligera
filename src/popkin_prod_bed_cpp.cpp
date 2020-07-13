@@ -38,7 +38,7 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
     // negate and copy values over to C++ version
     for (j = 0; j < n_ind; j++) {
       // have to do it in this awkward way, since indexes_ind_R_good is not type bool
-      indexes_ind_rm[ j ] = indexes_ind_R_good[ j ] == FALSE;
+      indexes_ind_rm[ j ] = ( indexes_ind_R_good[ j ] == FALSE );
     }
   }
 
@@ -176,7 +176,8 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
       // navigate the four positions
       // pos is just a dummy counter not really used except to know when to stop
       // update j too, accordingly
-      for (pos = 0; pos < 4; pos++, j++) {
+      // lastly, always shift packed data, throwing away genotype we just processed
+      for (pos = 0; pos < 4; pos++, j++, buf_k = buf_k >> 2) {
 
 	if (j < n_ind) {
 
@@ -207,9 +208,6 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
 	  // } else { // only case left is NA
 	  //   // xij = 0; // 1 -> NA -> 0
 	  // }
-	  
-	  // shift packed data, throwing away genotype we just processed
-	  buf_k = buf_k >> 2;
 	} else {
 	  // when j is out of range, we're in the padding data now
 	  // as an extra sanity check, the remaining data should be all zero (that's how the encoding is supposed to work)
@@ -246,7 +244,8 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
       // navigate the four positions
       // pos is just a dummy counter not really used except to know when to stop
       // update j too, accordingly
-      for (pos = 0; pos < 4; pos++, j++) {
+      // lastly, always shift packed data, throwing away genotype we just processed
+      for (pos = 0; pos < 4; pos++, j++, buf_k = buf_k >> 2) {
 
 	if (j < n_ind) {
 
@@ -278,8 +277,6 @@ Rcpp::NumericMatrix popkin_prod_bed_cpp(
 	  //   // xij = 0; // 1 -> NA -> 0
 	  // }
 	  
-	  // shift packed data, throwing away genotype we just processed
-	  buf_k = buf_k >> 2;
 	  // increment individuals that weren't skipped, and only after we were done processing the individual
 	  j_out++;
 	} else {

@@ -8,7 +8,7 @@
 // params:
 // file, m_loci, n_ind: BED file path and matrix dimensions
 // mean_kinship: a value to unbias estimates
-// indexes_ind_rm: vector of indeces to remove (can be NULL)
+// indexes_ind_R: vector of indeces to keep (can be NULL)
 
 // [[Rcpp::export]]
 Rcpp::List get_b_inbr_bed_cpp(
@@ -35,10 +35,17 @@ Rcpp::List get_b_inbr_bed_cpp(
     // negate and copy values over to C++ version
     for (j = 0; j < n_ind; j++) {
       // have to do it in this awkward way, since indexes_ind_R_good is not type bool
-      indexes_ind_rm[ j ] = indexes_ind_R_good[ j ] == FALSE;
+      indexes_ind_rm[ j ] = ( indexes_ind_R_good[ j ] == FALSE );
     }
   }
     
+  // to have output length right, count the number of individuals we're keeping
+  std::vector<int>::size_type n_ind_kept = n_ind; // decrement
+  if ( do_ind_filt )
+    for (j = 0; j < n_ind; j++)
+      if ( indexes_ind_rm[ j ] )
+	n_ind_kept--;
+  
   // open input file in "binary" mode
   FILE *file_stream = fopen( file, "rb" );
   // die right away if needed, before initializing buffers etc
@@ -144,8 +151,9 @@ Rcpp::List get_b_inbr_bed_cpp(
     j = 0; // individuals
 
     // reset things we need to get allele frequency
+    // NOTE: when there are filtered individuals, should start from their total (only NAs decrement this count)
     x_sum = 0;
-    x_num = n_ind; // decrement NAs, just as for inbr_num above (assuming NAs are rare, this is faster)
+    x_num = n_ind_kept; // decrement NAs, just as for inbr_num above (assuming NAs are rare, this is faster)
       
     // navigate buffer positions k (not individuals j)
     for (k = 0; k < n_buf; k++) {
@@ -156,7 +164,8 @@ Rcpp::List get_b_inbr_bed_cpp(
       // navigate the four positions
       // pos is just a dummy counter not really used except to know when to stop
       // update j too, accordingly
-      for (pos = 0; pos < 4; pos++, j++) {
+      // lastly, always shift packed data, throwing away genotype we just processed
+      for (pos = 0; pos < 4; pos++, j++, buf_k = buf_k >> 2) {
 
 	if (j < n_ind) {
 
@@ -181,7 +190,7 @@ Rcpp::List get_b_inbr_bed_cpp(
 	    inbr_sum[ j ]++;
 	  } else if (xij == 2) {
 	    // xij = 1; // 2 -> 1
-	    x_sum += 1;
+	    x_sum++;
 	  } else { // only case left is NA
 	    // xij = 0; // 1 -> NA
 	    // decrement non-NA count for this individual and locus, respectively
@@ -189,8 +198,6 @@ Rcpp::List get_b_inbr_bed_cpp(
 	    x_num--;
 	  }
 	  
-	  // shift packed data, throwing away genotype we just processed
-	  buf_k = buf_k >> 2;
 	} else {
 	  // when j is out of range, we're in the padding data now
 	  // as an extra sanity check, the remaining data should be all zero (that's how the encoding is supposed to work)
@@ -212,11 +219,12 @@ Rcpp::List get_b_inbr_bed_cpp(
     // finished row
 
     // finish processing terms for b
-    // calculate mean genotype now that we're done with this one locus
+    // avoid division by zero (don't do anything if there were no non-NA observations; extremely rare)
     if ( x_num != 0 ) {
+      // calculate mean genotype now that we're done with this one locus
       x_mean = static_cast<double>(x_sum) / x_num;
       // update b running sum
-      b += x_mean * (2 - x_mean);
+      b += x_mean * (2.0 - x_mean);
     } else {
       // NOTE: no observations treats this locus' contribution to b as zero, only happens if every individual that wasn't removed was NA
       // in this case we decrement the denominator of b, for when we normalize it into a mean
@@ -245,15 +253,6 @@ Rcpp::List get_b_inbr_bed_cpp(
   Rcpp::NumericVector bR(1);
   bR[ 0 ] = b;
 
-  // to have output length right, count the number of individuals we're keeping
-  std::vector<int>::size_type n_ind_kept = n_ind; // decrement
-  if ( do_ind_filt ) {
-    for (j = 0; j < n_ind; j++) {
-      if ( indexes_ind_rm[ j ] )
-	n_ind_kept--;
-    }
-  }
-  
   // final inbreeding vector
   // NOTE: contains only individuals that were not removed!
   Rcpp::NumericVector inbr(n_ind_kept);
