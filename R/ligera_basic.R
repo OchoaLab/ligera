@@ -1,7 +1,7 @@
 # the original version without BEDMatrix or missingness support
 # (for tests; do not export!)
 # unlike main function, this one requires explicit kinship inverse to be provided (for extra sanity checks)
-ligera_basic <- function(X, trait, kinship, kinship_inv, loci_on_cols = FALSE) {
+ligera_basic <- function(X, trait, kinship, kinship_inv, covar = NULL, loci_on_cols = FALSE) {
     # some internal constants (preserving old tests)
     hetz <- TRUE
     hetz_indiv_inbr <- TRUE
@@ -24,16 +24,19 @@ ligera_basic <- function(X, trait, kinship, kinship_inv, loci_on_cols = FALSE) {
     ##############################
     ### EFFECT SIZE ESTIMATION ###
     ##############################
-    
-    # precompute quantities shared across loci
-    PhiInv11 <- sum( kinship_inv )
-    PhiInv1y <- sum( drop( kinship_inv %*% trait ) )
-    PhiInvyy <- drop( trait %*% kinship_inv %*% trait )
-    # a denominator that recurs
-    denom <- PhiInvyy * PhiInv11 - PhiInv1y^2
 
-    # the projection vector
-    proj <- ( PhiInv11 * drop(trait %*% kinship_inv) - PhiInv1y * rowSums(kinship_inv) ) / denom
+    # gather matrix of trait, intercept, and optional covariates
+    Y <- cbind( trait, 1 )
+    # add covariates, if present
+    if ( !is.null( covar ) )
+        Y <- cbind( Y, covar )
+    # use kinship inverse if given
+    Z <- kinship_inv %*% Y
+    # new way to abstract the rest of these
+    obj <- get_proj_denom_multi( Z, Y )
+    proj <- obj$proj
+    beta_var_fac <- obj$var
+
     # the coefficients are simply the genotypes projected!
     beta <- drop( X %*% proj )
     
@@ -76,7 +79,7 @@ ligera_basic <- function(X, trait, kinship, kinship_inv, loci_on_cols = FALSE) {
     }
 
     # construct final variance estimate of beta
-    beta_std_dev <- sqrt( 4 * p_q * PhiInv11 / denom )
+    beta_std_dev <- sqrt( 4 * p_q * beta_var_fac )
     
     ####################
     ### T-STATISTICS ###

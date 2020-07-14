@@ -10,6 +10,7 @@ ligera2_bed(
   n_ind,
   trait,
   mean_kinship,
+  covar = NULL,
   mem_factor = 0.7,
   mem_lim = NA,
   tol = 1e-15
@@ -25,6 +26,8 @@ ligera2_bed(
 \item{trait}{The length-\code{n} trait vector, which may be real valued and contain missing values.}
 
 \item{mean_kinship}{An estimate of the mean kinship produced externally, to ensure internal estimates of kinship and inbreeding are unbiased.}
+
+\item{covar}{An optional \code{n}-by-\code{K} matrix of \code{K} covariates, aligned with the individuals.}
 
 \item{mem_factor}{Proportion of available memory to use loading and processing genotypes.
 Ignored if \code{mem_lim} is not \code{NA}.}

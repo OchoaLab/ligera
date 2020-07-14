@@ -9,6 +9,7 @@
 #' @param trait The length-`n` trait vector, which may be real valued and contain missing values.
 #' @param kinship The `n`-by-`n` kinship matrix, estimated by other methods (i.e. the `popkin` package).
 #' @param kinship_inv The optional matrix inverse of the kinship matrix.  Setting this parameter is not recommended, as internally a conjugate gradient method (`\link[cPCG]{cgsolve}`) is used to implicitly invert this matrix, which is much faster.  However, for very large numbers of traits without missingness and the same kinship matrix, inverting once might be faster.
+#' @param covar An optional `n`-by-`K` matrix of `K` covariates, aligned with the individuals.
 #' @param loci_on_cols If `TRUE`, `X` has loci on columns and individuals on rows; if false (the default), loci are on rows and individuals on columns.
 #' If `X` is a BEDMatrix object, `loci_on_cols = TRUE` is set automatically.
 #' @param mem_factor Proportion of available memory to use loading and processing genotypes.
@@ -52,6 +53,7 @@ ligera <- function(
                    trait,
                    kinship,
                    kinship_inv = NULL,
+                   covar = NULL,
                    loci_on_cols = FALSE,
                    mem_factor = 0.7,
                    mem_lim = NA,
@@ -106,6 +108,10 @@ ligera <- function(
         stop('Number of individuals in `kinship` (', nrow( kinship ), ') does not match genotype matrix (', n_ind , ')')
     if ( !is.null( kinship_inv ) && nrow( kinship_inv ) != n_ind )
         stop('Number of individuals in `kinship_inv` (', nrow( kinship_inv ), ') does not match genotype matrix (', n_ind , ')')
+    if ( !is.null( covar ) ) {
+        if ( nrow( covar ) != n_ind )
+            stop('Number of individuals in `covar` (', nrow( covar ), ') does not match genotype matrix (', n_ind , ')')
+    }
     
     # update kinship, etc, if the trait has missing values
     # the good thing is that this is shared across loci, so comparably it's not so expensive
@@ -120,31 +126,35 @@ ligera <- function(
         kinship <- kinship[ indexes_ind, indexes_ind ]
         # force recomputing inverse of kinship matrix (see further below)
         kinship_inv <- NULL
+        # subset covariates, if present
+        if ( !is.null( covar ) )
+            covar <- covar[ indexes_ind, ]
         # reduce number of individuals, used in some calculations
         n_ind <- length( trait )
         # NOTE: only genotypes are left to filter with indexes_ind
     }
 
+    # gather matrix of trait, intercept, and optional covariates
+    Y <- cbind( trait, 1 )
+    # add covariates, if present
+    if ( !is.null( covar ) )
+        Y <- cbind( Y, covar )
     # compute inverse if needed
     if ( is.null( kinship_inv ) ) {
-        # this is so fast
-        # only two things have to be solved, all vectors
-        u <- rep.int(1, n_ind)
-        PhiInvy <- drop( cPCG::cgsolve( kinship, trait, tol = tol, maxIter = maxIter ) )
-        PhiInv1 <- drop( cPCG::cgsolve( kinship, u, tol = tol, maxIter = maxIter ) )
-        Z <- cbind( PhiInvy, PhiInv1 )
+        # initialize matrix to fill
+        Z <- matrix( NA, nrow = nrow(Y), ncol = ncol(Y) )
+        for ( k in 1:ncol(Y) ) {
+            Z[ , k ] <- drop( cPCG::cgsolve( kinship, Y[ , k ], tol = tol, maxIter = maxIter ) )
+        }
     } else {
         # use kinship inverse if given
-        PhiInvy <- drop( kinship_inv %*% trait )
-        PhiInv1 <- colSums( kinship_inv )
-        Z <- cbind( PhiInvy, PhiInv1 )
+        Z <- kinship_inv %*% Y
     }
     # new way to abstract the rest of these
-    Y <- cbind( trait, 1 )
     obj <- get_proj_denom_multi( Z, Y )
     proj <- obj$proj
     beta_var_fac <- obj$var
-
+    
     
     ##############################
     ### EFFECT SIZE ESTIMATION ###

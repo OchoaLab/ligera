@@ -8,6 +8,7 @@
 #' @param X The `m`-by-`n` genotype matrix, containing dosage values in (0, 1, 2, NA) for the reference allele at each locus.
 #' @param trait The length-`n` trait vector, which may be real valued and contain missing values.
 #' @param mean_kinship An estimate of the mean kinship produced externally, to ensure internal estimates of kinship and inbreeding are unbiased.
+#' @param covar An optional `n`-by-`K` matrix of `K` covariates, aligned with the individuals.
 #' @param loci_on_cols If `TRUE`, `X` has loci on columns and individuals on rows; if false (the default), loci are on rows and individuals on columns.
 #' If `X` is a BEDMatrix object, `loci_on_cols = TRUE` is set automatically.
 #' @param mem_factor Proportion of available memory to use loading and processing genotypes.
@@ -50,6 +51,7 @@ ligera2 <- function(
                     X,
                     trait,
                     mean_kinship,
+                    covar = NULL,
                     loci_on_cols = FALSE,
                     mem_factor = 0.7,
                     mem_lim = NA,
@@ -94,6 +96,10 @@ ligera2 <- function(
     # check dimensions of other items
     if ( length( trait ) != n_ind )
         stop('Number of individuals in `trait` (', length( trait ), ') does not match genotype matrix (', n_ind , ')')
+    if ( !is.null( covar ) ) {
+        if ( nrow( covar ) != n_ind )
+            stop('Number of individuals in `covar` (', nrow( covar ), ') does not match genotype matrix (', n_ind , ')')
+    }
     
     # handle missing values in trait
     # the good thing is that this is shared across loci, so comparably it's not so expensive
@@ -104,6 +110,9 @@ ligera2 <- function(
         indexes_ind <- !is.na( trait )
         # subset trait
         trait <- trait[ indexes_ind ]
+        # subset covariates, if present
+        if ( !is.null( covar ) )
+            covar <- covar[ indexes_ind, ]
         # reduce number of individuals, used in some calculations
         n_ind <- length( trait )
         # NOTE: only genotypes are left to filter with indexes_ind
@@ -112,6 +121,9 @@ ligera2 <- function(
     # only two things have to be solved, all vectors
     # this also calculates inbreeding vector, needed later
     Y <- cbind( trait, 1 )
+    # add covariates, if present
+    if ( !is.null( covar ) )
+        Y <- cbind( Y, covar )
     obj_scan <- conj_grad_scan(
         X = X,
         Y = Y,

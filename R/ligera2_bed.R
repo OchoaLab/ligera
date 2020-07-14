@@ -15,6 +15,7 @@ NULL
 #' @param n_ind The number of individuals in the BED file.
 #' @param trait The length-`n` trait vector, which may be real valued and contain missing values.
 #' @param mean_kinship An estimate of the mean kinship produced externally, to ensure internal estimates of kinship and inbreeding are unbiased.
+#' @param covar An optional `n`-by-`K` matrix of `K` covariates, aligned with the individuals.
 #' @param mem_factor Proportion of available memory to use loading and processing genotypes.
 #' Ignored if `mem_lim` is not `NA`.
 #' @param mem_lim Memory limit in GB, used to break up genotype data into chunks for very large datasets.
@@ -56,6 +57,7 @@ ligera2_bed <- function(
                         n_ind,
                         trait,
                         mean_kinship,
+                        covar = NULL,
                         mem_factor = 0.7,
                         mem_lim = NA,
                         tol = 1e-15
@@ -90,6 +92,10 @@ ligera2_bed <- function(
     # check dimensions of other items
     if ( length( trait ) != n_ind )
         stop('Number of individuals in `trait` (', length( trait ), ') does not match genotype matrix (', n_ind , ')')
+    if ( !is.null( covar ) ) {
+        if ( nrow( covar ) != n_ind )
+            stop('Number of individuals in `covar` (', nrow( covar ), ') does not match genotype matrix (', n_ind , ')')
+    }
     
     # handle missing values in trait
     # the good thing is that this is shared across loci, so comparably it's not so expensive
@@ -102,6 +108,9 @@ ligera2_bed <- function(
         indexes_ind <- !is.na( trait )
         # subset trait
         trait <- trait[ indexes_ind ]
+        # subset covariates, if present
+        if ( !is.null( covar ) )
+            covar <- covar[ indexes_ind, ]
         # reduce number of individuals, used in some calculations
         n_ind_kept <- length( trait )
         # NOTE: only genotypes are left to filter with indexes_ind
@@ -128,6 +137,9 @@ ligera2_bed <- function(
     
     # only two things have to be solved, all vectors
     Y <- cbind( trait, 1 )
+    # add covariates, if present
+    if ( !is.null( covar ) )
+        Y <- cbind( Y, covar )
     Z <- conj_grad_scan_bed_wcpp(
         file = file,
         m_loci = m_loci,
@@ -139,7 +151,7 @@ ligera2_bed <- function(
     )
 
     # new way to abstract the rest of these
-    obj <- get_proj_denom_multi( Z, Y )
+    obj <- get_proj_denom_multi( Z, Y ) # defaults hold: trait_only = TRUE, trait_index = 1
     proj <- obj$proj
     beta_var_fac <- obj$var
     

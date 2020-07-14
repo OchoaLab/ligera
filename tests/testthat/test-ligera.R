@@ -109,6 +109,13 @@ Z_miss <- solve( kinship_est_miss, Y )
 # a basic validation
 expect_true( !anyNA( Z_miss ) )
 
+# simulate some simple covariates
+# add two
+covar <- cbind(
+    rnorm( n ), # random continuous covariate
+    rbinom( n, 1, 0.5 ) # kinda like sex (binary, 1:1 proportion)
+)
+
 test_that("get_proj_denom_basic and get_proj_denom_multi work and agree with each other", {
     # run basic version first
     # nothing to compare it to yet, just save values
@@ -220,6 +227,25 @@ test_that("ligera runs on random data with missingness in X and trait", {
     expect_true( all( tib4$beta_std_dev > 0 ) )
     expect_true( all( tib4$p_q > 0 ) )
 })
+
+test_that("ligera works with covariates", {
+    expect_silent( tib <- ligera( X, trait, kinship, covar = covar ) )
+    expect_true( is_tibble( tib ) )
+    expect_equal( names( tib ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat') )
+    expect_equal( nrow( tib ), m )
+    expect_true( !anyNA( tib ) )
+    # range for some things
+    expect_true( all( tib$pval >= 0 ) )
+    expect_true( all( tib$pval <= 1 ) )
+    expect_true( all( tib$beta_std_dev > 0 ) )
+    expect_true( all( tib$p_q > 0 ) )
+    #    expect_true( all( tib$p_q < 1 ) ) # because of inbreeding weights, there is no upper limit technically
+
+    # this is the basic version (requires non-missingness, so it can only be compared here)
+    tib_basic <- ligera_basic( X, trait, kinship, solve(kinship), covar = covar )
+    expect_equal( tib, tib_basic )
+})
+
 
 #################################
 ### LIGERA2 (Full BOLT trick) ###
@@ -409,6 +435,33 @@ test_that("ligera2 runs on random data with missingness in X and trait", {
     expect_true( all( tib8$beta_std_dev > 0 ) )
     expect_true( all( tib8$p_q > 0 ) )
 })
+
+test_that("ligera2 works with covariates", {
+    # NOTE: use <<- to remember variable globally (outside this scope)
+    expect_silent(
+        tib_covar <<- ligera2(
+            X = X,
+            trait = trait,
+            mean_kinship = mean_kinship,
+            covar = covar
+        )
+    )
+    expect_true( is_tibble( tib_covar ) )
+    expect_equal( names( tib_covar ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat') )
+    expect_equal( nrow( tib_covar ), m )
+    expect_true( !anyNA( tib_covar ) )
+    # range for some things
+    expect_true( all( tib_covar$pval >= 0 ) )
+    expect_true( all( tib_covar$pval <= 1 ) )
+    expect_true( all( tib_covar$beta_std_dev > 0 ) )
+    expect_true( all( tib_covar$p_q > 0 ) )
+    #    expect_true( all( tib1$p_q < 1 ) ) # because of inbreeding weights, there is no upper limit technically
+
+    # this is the basic version (requires non-missingness, so it can only be compared here)
+    tib_covar_basic <- ligera_basic( X, trait, kinship_est, solve(kinship_est), covar = covar )
+    expect_equal( tib_covar, tib_covar_basic )
+})
+
 
 ##############################################################
 ### LIGERA2_BED (Full BOLT trick, Rcpp optimized BED only) ###
@@ -685,6 +738,20 @@ if (
             mean_kinship = mean_kinship
         )
         expect_equal( tib7, tib7_bed )
+    })
+
+    test_that("ligera2_bed works with covariates", {
+        expect_silent(
+            tib_covar_bed <- ligera2_bed(
+                file = name,
+                m_loci = m,
+                n_ind = n,
+                trait = trait,
+                mean_kinship = mean_kinship,
+                covar = covar
+            )
+        )
+        expect_equal( tib_covar, tib_covar_bed )
     })
 
     # delete temporary files now
