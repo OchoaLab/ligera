@@ -32,20 +32,7 @@ NULL
 #' - `t_stat`: The test statistic, equal to `beta / beta_std_dev`.
 #'
 #' @examples
-#' # Construct toy data
-#' # genotype matrix
-#' X <- matrix(
-#'     c(0, 1, 2,
-#'       1, 0, 1,
-#'       1, 0, 2),
-#'     nrow = 3,
-#'     byrow = TRUE
-#' )
-#' trait <- 1 : 3
-#' mean_kinship <- mean( diag( 3 ) / 2 ) # unstructured case
-#'
-#' tib <- ligera2( X, trait, mean_kinship )
-#' tib
+#' # MISSING SAMPLE BED FILE
 #'
 #' @seealso
 #' The `popkin` package.

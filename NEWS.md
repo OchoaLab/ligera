@@ -10,3 +10,7 @@
 
 * Added `ligera2_bed`, a version of `ligera2` specific to plink BED files sped up with Rcpp code for critical components!
 * Added covariate support to all the main functions (`ligera`, `ligera2`, and `ligera2_bed`).
+
+# 2020-07-14 - ligera 1.0.3.9000
+
+* Added multiscan wrapper for all versions of LIGERA (`ligera_multi`, `ligera2_multi`, `ligera2_bed_multi`), which iterates the genetic association scans and adds significant loci to covariates (one per iteration) to condition upon them and increase power on the weaker signals.
