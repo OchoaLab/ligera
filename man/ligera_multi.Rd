@@ -9,6 +9,7 @@ ligera_multi(
   trait,
   kinship,
   q_cut = 0.05,
+  one_per_iter = FALSE,
   kinship_inv = NULL,
   covar = NULL,
   loci_on_cols = FALSE,
@@ -26,6 +27,8 @@ ligera_multi(
 \item{kinship}{The \code{n}-by-\code{n} kinship matrix, estimated by other methods (i.e. the \code{popkin} package).}
 
 \item{q_cut}{The q-value threshold to admit new loci into the polygenic model.}
+
+\item{one_per_iter}{If true, only the most significant locus per iteration is added to model of next iteration.  Otherwise all significant loci per iteration are added to the model of next iteration.}
 
 \item{kinship_inv}{The optional matrix inverse of the kinship matrix.  Setting this parameter is not recommended, as internally a conjugate gradient method (\verb{\link[cPCG]\{cgsolve\}}) is used to implicitly invert this matrix, which is much faster.  However, for very large numbers of traits without missingness and the same kinship matrix, inverting once might be faster.}
 

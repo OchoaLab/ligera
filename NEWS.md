@@ -13,4 +13,4 @@
 
 # 2020-07-14 - ligera 1.0.3.9000
 
-* Added multiscan wrapper for all versions of LIGERA (`ligera_multi`, `ligera2_multi`, `ligera2_bed_multi`), which iterates the genetic association scans and adds significant loci to covariates (one per iteration) to condition upon them and increase power on the weaker signals.
+* Added multiscan wrapper for all versions of LIGERA (`ligera_multi`, `ligera2_multi`, `ligera2_bed_multi`), which iterates the genetic association scans and adds significant loci to covariates (options for one per iteration or all significant per iteration) to condition upon them and increase power on the weaker signals.

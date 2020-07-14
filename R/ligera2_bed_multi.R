@@ -12,6 +12,7 @@
 #' @param trait The length-`n` trait vector, which may be real valued and contain missing values.
 #' @param mean_kinship An estimate of the mean kinship produced externally, to ensure internal estimates of kinship and inbreeding are unbiased.
 #' @param q_cut The q-value threshold to admit new loci into the polygenic model.
+#' @param one_per_iter If true, only the most significant locus per iteration is added to model of next iteration.  Otherwise all significant loci per iteration are added to the model of next iteration.
 #' @param covar An optional `n`-by-`K` matrix of `K` covariates, aligned with the individuals.
 #' @param mem_factor Proportion of available memory to use loading and processing genotypes.
 #' Ignored if `mem_lim` is not `NA`.
@@ -45,6 +46,7 @@ ligera2_bed_multi <- function(
                               trait,
                               mean_kinship,
                               q_cut = 0.05,
+                              one_per_iter = FALSE,
                               covar = NULL,
                               mem_factor = 0.7,
                               mem_lim = NA,
@@ -90,39 +92,44 @@ ligera2_bed_multi <- function(
             tib$qval[ -loci_selected ] <- qvalue::qvalue( tib$pval[ -loci_selected ] )$qvalues
         }
 
-        # find the most significant locus
-        # which.min always returns a scalar (*first* minimum)
-        index <- which.min( tib$pval ) # p-values may have more resolution, q-values sometimes tie, otherwise the same as q-values
+        # decide what to add, if anything
+        if ( one_per_iter ) {
+            # find the most significant locus
+            # which.min always returns a scalar (*first* minimum)
+            indexes <- which.min( tib$pval ) # p-values may have more resolution, q-values sometimes tie, otherwise the same as q-values
+            # tell the next part of the loop if this was significant (overwrite new_select from before, really updates it)
+            new_selec <- tib$qval[ indexes ] < q_cut
+        } else {
+            # directly select subset that was newly significant on this round
+            indexes <- which( tib$qval < q_cut )
+            # here we move to the next stage as long as indexes was not empty
+            new_selec <- length( indexes ) > 0
+        }
 
-        # if this is significant, add to covariates and reiterate
-        if ( tib$qval[ index ] < q_cut ) {
+        # if there were any newly significant loci, add to covariates and reiterate
+        if ( new_selec ) {
 
-            # add to list of selected loci, for our info
-            loci_selected <- c( loci_selected, index )
+            # add to list of selected loci
+            loci_selected <- c( loci_selected, indexes )
 
             # remember their stats from their last round before getting added as covariates
             tib_selected <- dplyr::bind_rows(
                                        tib_selected,
-                                       tib[ index, ]
+                                       tib[ indexes, ]
                                    )
 
             # add to covariates
-            # first extract genotype vector
-            X_i <- X[ , index ] # BEDMatrix orientation
+            # first extract genotype submatrix
+            # NOTE this is matrix even if there was a single index there
+            # here transposition is backwards than usual (individuals in X are usually on the column, but as covariates we need then on the rows!)
+            X_i <- X[ , indexes, drop = FALSE ] # BEDMatrix orientation
+            
             # add to covariates matrix now
-            covar <-
-                if ( is.null( covar ) ) {
-                    # turn into a matrix with a single column
-                    cbind( X_i )
-                } else {
-                    cbind( covar, X_i )
-                }
-
+            covar <- if ( is.null( covar ) ) X_i else cbind( covar, X_i )
+            
             # `new_selec` stays `TRUE`
-        } else {
-            # we're done discovering new loci :(
-            new_selec <- FALSE
         }
+        # otherwise `new_selec == FALSE`, so we're done
     }
 
     # it'd be nice to return the last tibble, but again the selected loci will all have p=1

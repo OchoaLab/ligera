@@ -9,6 +9,7 @@ ligera2_multi(
   trait,
   mean_kinship,
   q_cut = 0.05,
+  one_per_iter = FALSE,
   covar = NULL,
   loci_on_cols = FALSE,
   mem_factor = 0.7,
@@ -24,6 +25,8 @@ ligera2_multi(
 \item{mean_kinship}{An estimate of the mean kinship produced externally, to ensure internal estimates of kinship and inbreeding are unbiased.}
 
 \item{q_cut}{The q-value threshold to admit new loci into the polygenic model.}
+
+\item{one_per_iter}{If true, only the most significant locus per iteration is added to model of next iteration.  Otherwise all significant loci per iteration are added to the model of next iteration.}
 
 \item{covar}{An optional \code{n}-by-\code{K} matrix of \code{K} covariates, aligned with the individuals.}
 

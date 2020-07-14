@@ -269,6 +269,24 @@ test_that("ligera_multi runs without errors", {
     expect_true( all( tib$sel >= 0 ) )
 })
 
+test_that("ligera_multi `one_per_iter = TRUE` runs without errors", {
+    expect_silent(
+        tib <- ligera_multi( X, trait, kinship, one_per_iter = TRUE )
+    )
+    expect_true( is_tibble( tib ) )
+    expect_equal( names( tib ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat', 'qval', 'sel') )
+    expect_equal( nrow( tib ), m )
+    expect_true( !anyNA( tib ) )
+    # range for some things
+    expect_true( all( tib$pval >= 0 ) )
+    expect_true( all( tib$pval <= 1 ) )
+    expect_true( all( tib$qval >= 0 ) )
+    expect_true( all( tib$qval <= 1 ) )
+    expect_true( all( tib$beta_std_dev > 0 ) )
+    expect_true( all( tib$p_q > 0 ) )
+    expect_true( all( tib$sel >= 0 ) )
+})
+
 test_that("ligera_multi runs with covariates without errors", {
     expect_silent(
         tib <- ligera_multi( X, trait, kinship, covar = covar )
@@ -529,6 +547,34 @@ test_that("ligera2_multi runs without errors, matches ligera_multi", {
     # compare to earlier ligera with exact same kinship matrix for comparison
     tib_multi_basic <- ligera_multi( X, trait, kinship_est )
     expect_equal( tib_multi, tib_multi_basic )
+})
+
+test_that("ligera2_multi `one_per_iter = TRUE` runs without errors, matches ligera_multi", {
+    # NOTE: use <<- to remember variable globally (outside this scope)
+    expect_silent(
+        tib_multi_opi <<- ligera2_multi(
+            X = X,
+            trait = trait,
+            mean_kinship = mean_kinship,
+            one_per_iter = TRUE
+        )
+    )
+    expect_true( is_tibble( tib_multi ) )
+    expect_equal( names( tib_multi ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat', 'qval', 'sel') )
+    expect_equal( nrow( tib_multi ), m )
+    expect_true( !anyNA( tib_multi ) )
+    # range for some things
+    expect_true( all( tib_multi$pval >= 0 ) )
+    expect_true( all( tib_multi$pval <= 1 ) )
+    expect_true( all( tib_multi$qval >= 0 ) )
+    expect_true( all( tib_multi$qval <= 1 ) )
+    expect_true( all( tib_multi$beta_std_dev > 0 ) )
+    expect_true( all( tib_multi$p_q > 0 ) )
+    expect_true( all( tib_multi$sel >= 0 ) )
+
+    # compare to earlier ligera with exact same kinship matrix for comparison
+    tib_multi_opi_basic <- ligera_multi( X, trait, kinship_est, one_per_iter = TRUE )
+    expect_equal( tib_multi_opi, tib_multi_opi_basic )
 })
 
 
@@ -834,6 +880,20 @@ if (
             )
         )
         expect_equal( tib_multi, tib_multi_bed )
+    })
+
+    test_that("ligera2_bed_multi `one_per_iter = TRUE` runs without errors, matches ligera2_multi", {
+        expect_silent(
+            tib_multi_opi_bed <- ligera2_bed_multi(
+                file = name,
+                m_loci = m,
+                n_ind = n,
+                trait = trait,
+                mean_kinship = mean_kinship,
+                one_per_iter = TRUE
+            )
+        )
+        expect_equal( tib_multi_opi, tib_multi_opi_bed )
     })
 
     # delete temporary files now

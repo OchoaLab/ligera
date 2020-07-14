@@ -9,6 +9,7 @@
 #' @param trait The length-`n` trait vector, which may be real valued and contain missing values.
 #' @param kinship The `n`-by-`n` kinship matrix, estimated by other methods (i.e. the `popkin` package).
 #' @param q_cut The q-value threshold to admit new loci into the polygenic model.
+#' @param one_per_iter If true, only the most significant locus per iteration is added to model of next iteration.  Otherwise all significant loci per iteration are added to the model of next iteration.
 #' @param kinship_inv The optional matrix inverse of the kinship matrix.  Setting this parameter is not recommended, as internally a conjugate gradient method (`\link[cPCG]{cgsolve}`) is used to implicitly invert this matrix, which is much faster.  However, for very large numbers of traits without missingness and the same kinship matrix, inverting once might be faster.
 #' @param covar An optional `n`-by-`K` matrix of `K` covariates, aligned with the individuals.
 #' @param loci_on_cols If `TRUE`, `X` has loci on columns and individuals on rows; if false (the default), loci are on rows and individuals on columns.
@@ -62,6 +63,7 @@ ligera_multi <- function(
                          trait,
                          kinship,
                          q_cut = 0.05,
+                         one_per_iter = FALSE,
                          kinship_inv = NULL,
                          covar = NULL,
                          loci_on_cols = FALSE,
@@ -79,6 +81,10 @@ ligera_multi <- function(
     # initialize to TRUE so first iteration occurs
     new_selec <- TRUE
     
+    # need to have this here
+    if ('BEDMatrix' %in% class(X))
+        loci_on_cols <- TRUE
+
     # loop while there are still significant loci
     while( new_selec ) {
         # assume that covar has been grown to include selected loci already
@@ -109,39 +115,44 @@ ligera_multi <- function(
             tib$qval[ -loci_selected ] <- qvalue::qvalue( tib$pval[ -loci_selected ] )$qvalues
         }
 
-        # find the most significant locus
-        # which.min always returns a scalar (*first* minimum)
-        index <- which.min( tib$pval ) # p-values may have more resolution, q-values sometimes tie, otherwise the same as q-values
+        # decide what to add, if anything
+        if ( one_per_iter ) {
+            # find the most significant locus
+            # which.min always returns a scalar (*first* minimum)
+            indexes <- which.min( tib$pval ) # p-values may have more resolution, q-values sometimes tie, otherwise the same as q-values
+            # tell the next part of the loop if this was significant (overwrite new_select from before, really updates it)
+            new_selec <- tib$qval[ indexes ] < q_cut
+        } else {
+            # directly select subset that was newly significant on this round
+            indexes <- which( tib$qval < q_cut )
+            # here we move to the next stage as long as indexes was not empty
+            new_selec <- length( indexes ) > 0
+        }
 
-        # if this is significant, add to covariates and reiterate
-        if ( tib$qval[ index ] < q_cut ) {
+        # if there were any newly significant loci, add to covariates and reiterate
+        if ( new_selec ) {
 
-            # add to list of selected loci, for our info
-            loci_selected <- c( loci_selected, index )
+            # add to list of selected loci
+            loci_selected <- c( loci_selected, indexes )
 
             # remember their stats from their last round before getting added as covariates
             tib_selected <- dplyr::bind_rows(
                                        tib_selected,
-                                       tib[ index, ]
+                                       tib[ indexes, ]
                                    )
 
             # add to covariates
-            # first extract genotype vector
-            X_i <- if ( loci_on_cols ) X[ , index ] else X[ index, ]
+            # first extract genotype submatrix
+            # NOTE this is matrix even if there was a single index there
+            # here transposition is backwards than usual (individuals in X are usually on the column, but as covariates we need then on the rows!)
+            X_i <- if ( loci_on_cols ) X[ , indexes, drop = FALSE ] else t( X[ indexes, , drop = FALSE ] )
+            
             # add to covariates matrix now
-            covar <-
-                if ( is.null( covar ) ) {
-                    # turn into a matrix with a single column
-                    cbind( X_i )
-                } else {
-                    cbind( covar, X_i )
-                }
-
+            covar <- if ( is.null( covar ) ) X_i else cbind( covar, X_i )
+            
             # `new_selec` stays `TRUE`
-        } else {
-            # we're done discovering new loci :(
-            new_selec <- FALSE
         }
+        # otherwise `new_selec == FALSE`, so we're done
     }
 
     # it'd be nice to return the last tibble, but again the selected loci will all have p=1
