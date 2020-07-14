@@ -9,4 +9,4 @@
 # 2020-07-13 - ligera 1.0.2.9000
 
 * Added `ligera2_bed`, a version of `ligera2` specific to plink BED files sped up with Rcpp code for critical components!
-
+* Added covariate support to all the main functions (`ligera`, `ligera2`, and `ligera2_bed`).
