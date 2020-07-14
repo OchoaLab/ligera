@@ -109,6 +109,33 @@ Z_miss <- solve( kinship_est_miss, Y )
 # a basic validation
 expect_true( !anyNA( Z_miss ) )
 
+test_that("get_proj_denom_basic and get_proj_denom_multi work and agree with each other", {
+    # run basic version first
+    # nothing to compare it to yet, just save values
+    # these are treated as true values/direct calculations later on
+    obj <- get_proj_denom_basic(Z, trait)
+    proj <- obj$proj
+    beta_var <- obj$var
+    # make sure dimensions make sense
+    expect_equal( length( proj ), n )
+    expect_equal( length( beta_var ), 1 )
+    # non-negative (it's a variance scale)
+    expect_true( beta_var >= 0 )
+
+    # now run fancier version for covariates!
+    obj <- get_proj_denom_multi(Z, Y) # , trait_only = TRUE
+    expect_equal( proj, obj$proj )
+    expect_equal( beta_var, obj$var )
+
+    # and lastly, test complete outputs (not just for trait)
+    K <- ncol(Y)
+    obj <- get_proj_denom_multi(Z, Y, trait_only = FALSE)
+    expect_equal( nrow( obj$proj ), n )
+    expect_equal( ncol( obj$proj ), K )
+    expect_equal( nrow( obj$cov_mat ), K )
+    expect_equal( ncol( obj$cov_mat ), K )
+})
+
 
 test_that("ligera stops when needed", {
     # test that there are errors when crucial data is missing

@@ -122,19 +122,12 @@ ligera2 <- function(
     )
     Z <- obj_scan$Z
     inbr <- obj_scan$inbr
-    PhiInvy <- Z[ , 1 ]
-    PhiInv1 <- Z[ , 2 ]
-    
-    # precompute quantities shared across loci
-    PhiInv11 <- sum( PhiInv1 )
-    PhiInv1y <- sum( PhiInvy )
-    PhiInvyy <- drop( trait %*% PhiInvy )
-    # a denominator that recurs
-    denom <- PhiInvyy * PhiInv11 - PhiInv1y^2
 
-    # the projection vector
-    proj <- ( PhiInv11 * PhiInvy - PhiInv1y * PhiInv1 ) / denom
-    
+    # new way to abstract the rest of these
+    obj <- get_proj_denom_multi( Z, Y )
+    proj <- obj$proj
+    beta_var_fac <- obj$var
+
     ##############################
     ### EFFECT SIZE ESTIMATION ###
     ##############################
@@ -239,7 +232,7 @@ ligera2 <- function(
     }
 
     # construct final variance estimate of beta
-    beta_std_dev <- sqrt( 4 * p_q * PhiInv11 / denom )
+    beta_std_dev <- sqrt( 4 * p_q * beta_var_fac )
     
     ####################
     ### T-STATISTICS ###

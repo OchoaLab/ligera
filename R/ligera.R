@@ -132,29 +132,19 @@ ligera <- function(
         u <- rep.int(1, n_ind)
         PhiInvy <- drop( cPCG::cgsolve( kinship, trait, tol = tol, maxIter = maxIter ) )
         PhiInv1 <- drop( cPCG::cgsolve( kinship, u, tol = tol, maxIter = maxIter ) )
-
-        # precompute quantities shared across loci
-        PhiInv11 <- sum( PhiInv1 )
-        PhiInv1y <- sum( PhiInvy )
-        PhiInvyy <- drop( trait %*% PhiInvy )
-        # a denominator that recurs
-        denom <- PhiInvyy * PhiInv11 - PhiInv1y^2
-
-        # the projection vector
-        proj <- ( PhiInv11 * PhiInvy - PhiInv1y * PhiInv1 ) / denom
+        Z <- cbind( PhiInvy, PhiInv1 )
     } else {
         # use kinship inverse if given
-        
-        # precompute quantities shared across loci
-        PhiInv11 <- sum( kinship_inv )
-        PhiInv1y <- sum( drop( kinship_inv %*% trait ) )
-        PhiInvyy <- drop( trait %*% kinship_inv %*% trait )
-        # a denominator that recurs
-        denom <- PhiInvyy * PhiInv11 - PhiInv1y^2
-
-        # the projection vector
-        proj <- ( PhiInv11 * drop(trait %*% kinship_inv) - PhiInv1y * rowSums(kinship_inv) ) / denom
+        PhiInvy <- drop( kinship_inv %*% trait )
+        PhiInv1 <- colSums( kinship_inv )
+        Z <- cbind( PhiInvy, PhiInv1 )
     }
+    # new way to abstract the rest of these
+    Y <- cbind( trait, 1 )
+    obj <- get_proj_denom_multi( Z, Y )
+    proj <- obj$proj
+    beta_var_fac <- obj$var
+
     
     ##############################
     ### EFFECT SIZE ESTIMATION ###
@@ -282,7 +272,7 @@ ligera <- function(
     }
 
     # construct final variance estimate of beta
-    beta_std_dev <- sqrt( 4 * p_q * PhiInv11 / denom )
+    beta_std_dev <- sqrt( 4 * p_q * beta_var_fac )
     
     ####################
     ### T-STATISTICS ###
