@@ -11,6 +11,7 @@
 #' @param q_cut The q-value threshold to admit new loci into the polygenic model.
 #' @param one_per_iter If true, only the most significant locus per iteration is added to model of next iteration.  Otherwise all significant loci per iteration are added to the model of next iteration.
 #' @param kinship_inv The optional matrix inverse of the kinship matrix.  Setting this parameter is not recommended, as internally a conjugate gradient method (`\link[cPCG]{cgsolve}`) is used to implicitly invert this matrix, which is much faster.  However, for very large numbers of traits without missingness and the same kinship matrix, inverting once might be faster.
+#' @param inbr An optional length-`n` vector of inbreeding coefficients.  Defaults to the inbreeding coefficients extracted from the provided `kinship` matrix.  This parameter, intended for internal use only, enables direct comparison to the `ligera2` version.
 #' @param covar An optional `n`-by-`K` matrix of `K` covariates, aligned with the individuals.
 #' @param loci_on_cols If `TRUE`, `X` has loci on columns and individuals on rows; if false (the default), loci are on rows and individuals on columns.
 #' If `X` is a BEDMatrix object, `loci_on_cols = TRUE` is set automatically.
@@ -65,6 +66,7 @@ ligera_multi <- function(
                          q_cut = 0.05,
                          one_per_iter = FALSE,
                          kinship_inv = NULL,
+                         inbr = popkin::inbr(kinship),
                          covar = NULL,
                          loci_on_cols = FALSE,
                          mem_factor = 0.7,
@@ -88,7 +90,7 @@ ligera_multi <- function(
     # loop while there are still significant loci
     while( new_selec ) {
         # assume that covar has been grown to include selected loci already
-        
+
         # run ligera
         # NOTE: selected loci become insigificant when retested
         tib <- ligera(
@@ -96,6 +98,7 @@ ligera_multi <- function(
             trait = trait,
             kinship = kinship,
             kinship_inv = kinship_inv,
+            inbr = inbr,
             covar = covar,
             loci_on_cols = loci_on_cols,
             mem_factor = mem_factor,
@@ -153,6 +156,14 @@ ligera_multi <- function(
             # `new_selec` stays `TRUE`
         }
         # otherwise `new_selec == FALSE`, so we're done
+
+        if ( new_selec && !is.null( covar ) ) {
+            # it seems in odd cases (like my tiny test simulations) the number of covariates grows to be more than the number of parameters!
+            # check here, force stop if this is exceeded
+            # (otherwise matrices inside become singular, causes confusing problems!)
+            if ( nrow( covar ) < ncol( covar ) )
+                new_selec <- FALSE # force stop!
+        }
     }
 
     # it'd be nice to return the last tibble, but again the selected loci will all have p=1

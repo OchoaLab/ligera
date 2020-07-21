@@ -9,6 +9,7 @@
 #' @param trait The length-`n` trait vector, which may be real valued and contain missing values.
 #' @param kinship The `n`-by-`n` kinship matrix, estimated by other methods (i.e. the `popkin` package).
 #' @param kinship_inv The optional matrix inverse of the kinship matrix.  Setting this parameter is not recommended, as internally a conjugate gradient method (`\link[cPCG]{cgsolve}`) is used to implicitly invert this matrix, which is much faster.  However, for very large numbers of traits without missingness and the same kinship matrix, inverting once might be faster.
+#' @param inbr An optional length-`n` vector of inbreeding coefficients.  Defaults to the inbreeding coefficients extracted from the provided `kinship` matrix.  This parameter, intended for internal use only, enables direct comparison to the `ligera2` version.
 #' @param covar An optional `n`-by-`K` matrix of `K` covariates, aligned with the individuals.
 #' @param loci_on_cols If `TRUE`, `X` has loci on columns and individuals on rows; if false (the default), loci are on rows and individuals on columns.
 #' If `X` is a BEDMatrix object, `loci_on_cols = TRUE` is set automatically.
@@ -53,6 +54,7 @@ ligera <- function(
                    trait,
                    kinship,
                    kinship_inv = NULL,
+                   inbr = popkin::inbr(kinship),
                    covar = NULL,
                    loci_on_cols = FALSE,
                    mem_factor = 0.7,
@@ -87,10 +89,10 @@ ligera <- function(
     # NOTE: trait and X may have missing values
     
     # override this for BEDMatrix
-    if (class(X) == 'BEDMatrix') {
+    if ( 'BEDMatrix' %in% class(X) ) {
         loci_on_cols <- TRUE
     } else if (!is.matrix(X))
-        stop('X has unsupported class: ', class(X))
+        stop('X has unsupported class: ', toString( class( X ) ) )
     
     # need these dimensions
     if (loci_on_cols) {
@@ -137,8 +139,11 @@ ligera <- function(
     # gather matrix of trait, intercept, and optional covariates
     Y <- cbind( trait, 1 )
     # add covariates, if present
-    if ( !is.null( covar ) )
+    if ( !is.null( covar ) ) {
+        # handle NAs now, so final Y has no missingness whatsoever
+        covar <- covar_fix_na( covar )
         Y <- cbind( Y, covar )
+    }
     # compute inverse if needed
     if ( is.null( kinship_inv ) ) {
         # initialize matrix to fill
@@ -154,8 +159,7 @@ ligera <- function(
     obj <- get_proj_denom_multi( Z, Y )
     proj <- obj$proj
     beta_var_fac <- obj$var
-    
-    
+
     ##############################
     ### EFFECT SIZE ESTIMATION ###
     ##############################
@@ -164,7 +168,7 @@ ligera <- function(
         if ( hetz_indiv_inbr ) {
             # correct for inbreeding bias on a per-individual basis!
             # formulate as using weights (but these don't sum to one)
-            weights_inbr <- 1 / ( 1 - popkin::inbr(kinship) ) / 2
+            weights_inbr <- 1 / ( 1 - inbr ) / 2
         } else {
             # the correction term is a scalar (same for all indvidiuals)
             weights_inbr <- 1 / ( 1 - popkin::fst(kinship) ) / 2

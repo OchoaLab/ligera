@@ -11,6 +11,7 @@ ligera_multi(
   q_cut = 0.05,
   one_per_iter = FALSE,
   kinship_inv = NULL,
+  inbr = popkin::inbr(kinship),
   covar = NULL,
   loci_on_cols = FALSE,
   mem_factor = 0.7,
@@ -31,6 +32,8 @@ ligera_multi(
 \item{one_per_iter}{If true, only the most significant locus per iteration is added to model of next iteration.  Otherwise all significant loci per iteration are added to the model of next iteration.}
 
 \item{kinship_inv}{The optional matrix inverse of the kinship matrix.  Setting this parameter is not recommended, as internally a conjugate gradient method (\verb{\link[cPCG]\{cgsolve\}}) is used to implicitly invert this matrix, which is much faster.  However, for very large numbers of traits without missingness and the same kinship matrix, inverting once might be faster.}
+
+\item{inbr}{An optional length-\code{n} vector of inbreeding coefficients.  Defaults to the inbreeding coefficients extracted from the provided \code{kinship} matrix.  This parameter, intended for internal use only, enables direct comparison to the \code{ligera2} version.}
 
 \item{covar}{An optional \code{n}-by-\code{K} matrix of \code{K} covariates, aligned with the individuals.}
 

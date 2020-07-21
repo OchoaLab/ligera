@@ -125,8 +125,11 @@ ligera2_bed <- function(
     # only two things have to be solved, all vectors
     Y <- cbind( trait, 1 )
     # add covariates, if present
-    if ( !is.null( covar ) )
+    if ( !is.null( covar ) ) {
+        # handle NAs now, so final Y has no missingness whatsoever
+        covar <- covar_fix_na( covar )
         Y <- cbind( Y, covar )
+    }
     Z <- conj_grad_scan_bed_wcpp(
         file = file,
         m_loci = m_loci,

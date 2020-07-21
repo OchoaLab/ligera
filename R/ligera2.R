@@ -80,7 +80,7 @@ ligera2 <- function(
     if ('BEDMatrix' %in% class(X)) {
         loci_on_cols <- TRUE
     } else if (!is.matrix(X))
-        stop('X has unsupported class: ', class(X))
+        stop('X has unsupported class: ', toString( class( X ) ) )
     
     # need these dimensions
     if (loci_on_cols) {
@@ -120,8 +120,11 @@ ligera2 <- function(
     # this also calculates inbreeding vector, needed later
     Y <- cbind( trait, 1 )
     # add covariates, if present
-    if ( !is.null( covar ) )
+    if ( !is.null( covar ) ) {
+        # handle NAs now, so final Y has no missingness whatsoever
+        covar <- covar_fix_na( covar )
         Y <- cbind( Y, covar )
+    }
     obj_scan <- conj_grad_scan(
         X = X,
         Y = Y,

@@ -7,10 +7,10 @@ ligera_basic <- function(X, trait, kinship, kinship_inv, covar = NULL, loci_on_c
     hetz_indiv_inbr <- TRUE
     
     # override this for BEDMatrix
-    if (class(X) == 'BEDMatrix') {
+    if ( 'BEDMatrix' %in% class( X ) ) {
         loci_on_cols <- TRUE
-    } else if (!is.matrix(X))
-        stop('X has unsupported class: ', class(X))
+    } else if ( !is.matrix( X ) )
+        stop('X has unsupported class: ', toString( class( X ) ) )
     
     # need these dimensions
     if (loci_on_cols) {
@@ -28,8 +28,11 @@ ligera_basic <- function(X, trait, kinship, kinship_inv, covar = NULL, loci_on_c
     # gather matrix of trait, intercept, and optional covariates
     Y <- cbind( trait, 1 )
     # add covariates, if present
-    if ( !is.null( covar ) )
+    if ( !is.null( covar ) ) {
+        # handle NAs now, so final Y has no missingness whatsoever
+        covar <- covar_fix_na( covar )
         Y <- cbind( Y, covar )
+    }
     # use kinship inverse if given
     Z <- kinship_inv %*% Y
     # new way to abstract the rest of these
