@@ -23,6 +23,8 @@ option_list = list(
                 help = "Base name for input plink files (.BED/BIM/FAM)", metavar = "character"),
     make_option("--pheno", type = "character", default = NA, 
                 help = "Base name for phenotype file (.PHEN).  If missing, phenotype in FAM table is used", metavar = "character"),
+    make_option("--multi", action = "store_true", default = FALSE, 
+                help = "Use multiscan version (slower but more powerful)"),
     make_option("--out", type = "character", default = NA, 
                 help = "Base name for report output file (default same as --bfile)", metavar = "character")
 )
@@ -34,6 +36,7 @@ opt <- parse_args(opt_parser)
 name <- opt$bfile
 name_phen <- opt$pheno
 name_out <- opt$out
+multi <- opt$multi
 
 # check for required values
 if ( is.na( name ) )
@@ -79,7 +82,11 @@ write_grm( name_out, kinship, fam = fam )
 
 message('ligera...')
 # now we have all the parts we need, run LIGERA!
-tib <- ligera( X, trait, kinship )
+if (multi) {
+    tib <- ligera_multi( X, trait, kinship )
+} else {
+    tib <- ligera( X, trait, kinship )
+}
 # can merge BIM into table to have a more complete report
 tib <- bind_cols( bim, tib )
 # write full table into an output file
