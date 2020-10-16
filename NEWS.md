@@ -23,3 +23,10 @@
   * This was necessary for multiscan versions (`ligera_multi`, `ligera2_multi`, `ligera2_bed_multi`) to work when the genotype matrix has missing values, as these may be incorporated as covariates in the iteration.
 * Multiscan versions stop iterations if and when the number of covariates exceed the number of individuals, to avoid inverting singular matrices (problem becomes overdetermined).
 * Fixed `class` usage now that matrices return a two-element array in R version 4.
+
+# 2020-10-16 - ligera 1.0.5.9000
+
+* All 6 ligera versions (`ligera`, `ligera2`, `ligera2_bed`, and `*_multi` variants)
+  - Added option `m_chunk_max` to further reduce memory usage (compared to previous default) without sacrificing speed.
+  - Added script wrappers (located in `scripts/`) for main 3 versions of ligera, each with a `--multi` option to also cover the 3 multiscan versions (actually added 2020-09-29)
+  - Added sample files to go with scripts (also located in `scripts/`; also added 2020-09-29)
