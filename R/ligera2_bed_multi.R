@@ -19,6 +19,8 @@
 #' @param mem_lim Memory limit in GB, used to break up genotype data into chunks for very large datasets.
 #' Note memory usage is somewhat underestimated and is not controlled strictly.
 #' Default in Linux and Windows is `mem_factor` times the free system memory, otherwise it is 1GB (OSX and other systems).
+#' @param m_chunk_max Sets the maximum number of loci to process at the time.
+#' Actual number of loci loaded may be lower if memory is limiting.
 #' @param tol Tolerance value passed to conjugate gradient method solver.
 #'
 #' @return A tibble containing the following association statistics from the last scan for non-selected loci.
@@ -50,6 +52,7 @@ ligera2_bed_multi <- function(
                               covar = NULL,
                               mem_factor = 0.7,
                               mem_lim = NA,
+                              m_chunk_max = 1000,
                               tol = 1e-15
                               ) {
     # things to initialize for loop
@@ -78,6 +81,7 @@ ligera2_bed_multi <- function(
             covar = covar,
             mem_factor = mem_factor,
             mem_lim = mem_lim,
+            m_chunk_max = m_chunk_max,
             tol = tol
         )
         

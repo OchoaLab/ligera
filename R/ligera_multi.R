@@ -20,6 +20,8 @@
 #' @param mem_lim Memory limit in GB, used to break up genotype data into chunks for very large datasets.
 #' Note memory usage is somewhat underestimated and is not controlled strictly.
 #' Default in Linux and Windows is `mem_factor` times the free system memory, otherwise it is 1GB (OSX and other systems).
+#' @param m_chunk_max Sets the maximum number of loci to process at the time.
+#' Actual number of loci loaded may be lower if memory is limiting.
 #' @param tol Tolerance value passed to `\link[cPCG]{cgsolve}`.
 #' @param maxIter Maximum number of iterations passed to `\link[cPCG]{cgsolve}`.
 #'
@@ -71,6 +73,7 @@ ligera_multi <- function(
                          loci_on_cols = FALSE,
                          mem_factor = 0.7,
                          mem_lim = NA,
+                         m_chunk_max = 1000,
                          # cgsolve options
                          tol = 1e-15, # default 1e-6
                          maxIter = 1e6 # default 1e3
@@ -103,6 +106,7 @@ ligera_multi <- function(
             loci_on_cols = loci_on_cols,
             mem_factor = mem_factor,
             mem_lim = mem_lim,
+            m_chunk_max = m_chunk_max,
             tol = tol,
             maxIter = maxIter
         )
