@@ -58,7 +58,7 @@ ligera <- function(
                    covar = NULL,
                    loci_on_cols = FALSE,
                    mem_factor = 0.7,
-                   mem_lim = NA,
+                   mem_lim = 1,
                    # cgsolve options
                    tol = 1e-15, # default 1e-6
                    maxIter = 1e6 # default 1e3

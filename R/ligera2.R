@@ -53,7 +53,7 @@ ligera2 <- function(
                     covar = NULL,
                     loci_on_cols = FALSE,
                     mem_factor = 0.7,
-                    mem_lim = NA,
+                    mem_lim = 1,
                     tol = 1e-15
                     ) {
     # - supports missingness in trait

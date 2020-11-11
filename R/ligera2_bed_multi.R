@@ -49,7 +49,7 @@ ligera2_bed_multi <- function(
                               one_per_iter = FALSE,
                               covar = NULL,
                               mem_factor = 0.7,
-                              mem_lim = NA,
+                              mem_lim = 1,
                               tol = 1e-15
                               ) {
     # things to initialize for loop
