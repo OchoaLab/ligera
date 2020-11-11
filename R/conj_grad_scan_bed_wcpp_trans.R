@@ -12,7 +12,7 @@
 # but here kinship is implicitly given by X
 #
 # this version doesn't calculate b, inbr internally, requires external b instead
-conj_grad_scan_bed_wcpp <- function(
+conj_grad_scan_bed_wcpp_trans <- function(
                                     file,
                                     m_loci,
                                     n_ind, # number of individuals in BED file (may be less than kept individuals in Y or indexes_ind)
@@ -110,7 +110,7 @@ conj_grad_scan_bed_wcpp <- function(
         }
         # if there are still unconverged things, keep updating things
         # have to "sweep" the `beta = Rn1 / Rn` too, to go across rows instead of columns
-        P <- R + t(t(P)*Rn1/Rn)
+        P <- R + t(t(P)*(Rn1/Rn))
         Rn <- Rn1
     }
     

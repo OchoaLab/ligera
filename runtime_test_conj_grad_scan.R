@@ -148,12 +148,45 @@ profvis({
     # if there are still unconverged things, keep updating things
     # have to "sweep" the `beta = Rn1 / Rn` too, to go across rows instead of columns
     #P <- R + sweep( P, 2, Rn1 / Rn, '*')
-    P <- R + t( t(P) * Rn1 / Rn )
+    P <- R + t( t(P) * (Rn1 / Rn) )
     Rn <- Rn1
   }
   
   # after everything has converged, return the matrix of interest!
   return( Z )
 })
-
-
+Z1 = Z
+############ second method ##############
+    # P and R matrices are always non-converged subsets!
+    
+    # NOTE: this is the slowest part!
+    KP <- popkin_prod_bed_cpp(
+      file,
+      m_loci,
+      n_ind, # number of individuals in BED file, not kept
+      P,
+      b,
+      indexes_ind
+    )
+    
+    # now continue to update variables in the CG iterations, vectorized if possible
+    
+    # another vector of the same length
+    alpha <- Rn / colSums(P * KP)
+    # sweep makes alpha multiply every row of P, KP (normal product is by columns)
+    P_matrix <- P
+    
+    library(microbenchmark)
+    microbenchmark(
+    Z_sweep = sweep( P, 2, alpha, '*'),
+    Z_trans = t( t(P) * alpha ),
+    Z_apply = t(apply(P,1 , '*', alpha)),
+    Z_matrix = P_matrix * matrix(alpha, dim(P_matrix)[1], length(alpha), byrow = TRUE)
+    )
+    
+    
+    # create matrix from vector before multiplying
+    P_matrix <- P
+    Z_matrix = P_matrix * matrix(alpha, dim(P_matrix)[1], length(alpha), byrow = TRUE)
+    identical(Z_sweep, Z_matrix)
+    
