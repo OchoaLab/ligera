@@ -101,7 +101,7 @@ Rn <- colSums( R^2 )
 # different covariate columns may converge at different times, let's keep track of that
 not_converged <- rep.int( TRUE, k_covars )
 
-profvis({
+#profvis({
   # start loop
   while ( any( rep.int( TRUE, k_covars )) ) {
     # P and R matrices are always non-converged subsets!
@@ -123,7 +123,8 @@ profvis({
     # sweep makes alpha multiply every row of P, KP (normal product is by columns)
     #Z_sweep = sweep( P, 2, alpha, '*')
     Z_sweep2 = t( t(P) * alpha )
-    Z[ , not_converged ] <- Z[ , not_converged ] + Z_sweep2
+    Z_matrix = P * matrix(alpha, dim(P)[1], length(alpha), byrow = TRUE)
+    Z[ , not_converged ] <- Z[ , not_converged ] + Z_matrix
     #R <- R - sweep( KP, 2, alpha, '*')
     R <- R - t( t(KP) * alpha )
     # new residuals vector
@@ -154,8 +155,10 @@ profvis({
   
   # after everything has converged, return the matrix of interest!
   return( Z )
-})
-Z1 = Z
+#})
+Z_sweep = Z
+Z_matrix = Z
+identical(Z_sweep, Z_matrix)
 ############ second method ##############
     # P and R matrices are always non-converged subsets!
     
@@ -186,7 +189,8 @@ Z1 = Z
     
     
     # create matrix from vector before multiplying
-    P_matrix <- P
-    Z_matrix = P_matrix * matrix(alpha, dim(P_matrix)[1], length(alpha), byrow = TRUE)
+   #P_matrix <- P
+    Z_matrix = P * matrix(alpha, dim(P)[1], length(alpha), byrow = TRUE)
     identical(Z_sweep, Z_matrix)
-    
+    identical(P_matrix, P)
+

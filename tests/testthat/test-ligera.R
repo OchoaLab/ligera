@@ -961,7 +961,7 @@ if (
             )
         )
         expect_equal( Z, Z_BM )
-        
+
         # and this one compares to Z_miss
         expect_silent(
             Z_miss_BM <- conj_grad_scan_bed_wcpp(
@@ -988,7 +988,8 @@ if (
         expect_equal( Z_ind_rm, Z_ind_rm_BM )
     })
 ########### testing other versions of Z matrix computation ###############
-    test_that("conj_grad_scan_bed_wcpp matches precomputed values", {
+# double transpose method
+    test_that("conj_grad_scan_bed_wcpp_trans matches precomputed values", {
       # this one compares to Z
       expect_silent(
         Z_BM <- conj_grad_scan_bed_wcpp_trans(
@@ -1000,7 +1001,7 @@ if (
         )
       )
       expect_equal( Z, Z_BM )
-      
+
       # and this one compares to Z_miss
       expect_silent(
         Z_miss_BM <- conj_grad_scan_bed_wcpp_trans(
@@ -1012,7 +1013,7 @@ if (
         )
       )
       expect_equal( Z_miss, Z_miss_BM )
-      
+
       # this one has individuals removed
       expect_silent(
         Z_ind_rm_BM <- conj_grad_scan_bed_wcpp_trans(
@@ -1026,8 +1027,47 @@ if (
       )
       expect_equal( Z_ind_rm, Z_ind_rm_BM )
     })
-    
-    
+
+#matrix method
+test_that("conj_grad_scan_bed_wcpp_matrix matches precomputed values", {
+  # this one compares to Z
+  expect_silent(
+    Z_BM <- conj_grad_scan_bed_wcpp_matrix(
+      file = file_bed,
+      m_loci = m,
+      n_ind = n,
+      Y = Y,
+      b = b
+    )
+  )
+  expect_equal( Z, Z_BM )
+
+  # and this one compares to Z_miss
+  expect_silent(
+    Z_miss_BM <- conj_grad_scan_bed_wcpp_matrix(
+      file = file_bed_miss,
+      m_loci = m,
+      n_ind = n,
+      Y = Y,
+      b = b_miss
+    )
+  )
+  expect_equal( Z_miss, Z_miss_BM )
+
+  # this one has individuals removed
+  expect_silent(
+    Z_ind_rm_BM <- conj_grad_scan_bed_wcpp_matrix(
+      file = file_bed,
+      m_loci = m,
+      n_ind = n,
+      Y = Y_ind_rm,
+      b = b_ind_rm,
+      indexes_ind = indexes_ind
+    )
+  )
+  expect_equal( Z_ind_rm, Z_ind_rm_BM )
+  })
+
     
     
 ##########################################################################
