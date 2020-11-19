@@ -47,3 +47,11 @@ RcppExport void R_init_ligera(DllInfo *dll) {
     R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
     R_useDynamicSymbols(dll, FALSE);
 }
+
+Rcpp:::cppFunction(
+  "arma::mat fun(arma::mat A, arma::rowvec x) 
+  { 
+    A.each_row() %= x;
+    return A;
+  }", depends = "RcppArmadillo"
+)

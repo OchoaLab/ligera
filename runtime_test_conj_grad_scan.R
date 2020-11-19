@@ -101,10 +101,10 @@ Rn <- colSums( R^2 )
 # different covariate columns may converge at different times, let's keep track of that
 not_converged <- rep.int( TRUE, k_covars )
 
-#profvis({
+profvis({
   # start loop
   while ( any( rep.int( TRUE, k_covars )) ) {
-    # P and R matrices are always non-converged subsets!
+    # P and R matrices are always non-converged subsxets!
     
     # NOTE: this is the slowest part!
     KP <- popkin_prod_bed_cpp(
@@ -121,12 +121,13 @@ not_converged <- rep.int( TRUE, k_covars )
     # another vector of the same length
     alpha <- Rn / colSums(P * KP)
     # sweep makes alpha multiply every row of P, KP (normal product is by columns)
-    #Z_sweep = sweep( P, 2, alpha, '*')
-    Z_sweep2 = t( t(P) * alpha )
-    Z_matrix = P * matrix(alpha, dim(P)[1], length(alpha), byrow = TRUE)
-    Z[ , not_converged ] <- Z[ , not_converged ] + Z_matrix
-    #R <- R - sweep( KP, 2, alpha, '*')
-    R <- R - t( t(KP) * alpha )
+    Z_sweep = sweep( P, 2, alpha, '*')
+    #Z_trans = t( t(P) * alpha )
+    #Z_matrix = P * matrix(alpha, dim(P)[1], length(alpha), byrow = TRUE)
+    Z[ , not_converged ] <- Z[ , not_converged ] + Z_sweep
+    R <- R - sweep( KP, 2, alpha, '*')
+    #R <- R - t( t(KP) * alpha )
+    #R <- R - KP * matrix(alpha, dim(KP)[1], length(alpha), byrow = TRUE)
     # new residuals vector
     Rn1 <- colSums( R^2 )
     # take action if something has converged!
@@ -148,14 +149,19 @@ not_converged <- rep.int( TRUE, k_covars )
     }
     # if there are still unconverged things, keep updating things
     # have to "sweep" the `beta = Rn1 / Rn` too, to go across rows instead of columns
-    #P <- R + sweep( P, 2, Rn1 / Rn, '*')
-    P <- R + t( t(P) * (Rn1 / Rn) )
+    P <- R + sweep( P, 2, Rn1 / Rn, '*')
+    #P <- R + t( t(P) * (Rn1 / Rn) )
+    #P <- R + P * matrix((Rn1/Rn), dim(P)[1], length((Rn1/Rn)), byrow = TRUE)
     Rn <- Rn1
   }
   
   # after everything has converged, return the matrix of interest!
   return( Z )
-#})
+})
+
+htmlwidgets::saveWidget(p, "profile.html")
+profvis({conj_grad_scan_bed_wcpp_matrix()})
+
 Z_sweep = Z
 Z_matrix = Z
 identical(Z_sweep, Z_matrix)
@@ -184,13 +190,83 @@ identical(Z_sweep, Z_matrix)
     Z_sweep = sweep( P, 2, alpha, '*'),
     Z_trans = t( t(P) * alpha ),
     Z_apply = t(apply(P,1 , '*', alpha)),
-    Z_matrix = P_matrix * matrix(alpha, dim(P_matrix)[1], length(alpha), byrow = TRUE)
+    Z_matrix = P * matrix(alpha, dim(P)[1], length(alpha), byrow = TRUE),
+    Z_rep = P * rep(alpha, each = nrow(P)),
+    Z_rep2 = P * rep(alpha, rep.int(nrow(P), length(alpha))),
+    Z_col = P * alpha[col(P)]
     )
     
+    profvis({
+        Z_sweep = sweep( P, 2, alpha, '*')
+        # 2 - col wise/ 1 - row wise
+        Z_trans = t( t(P) * alpha )
+        Z_apply = t(apply(P,1 , '*', alpha))
+        Z_matrix = P * matrix(alpha, dim(P)[1], length(alpha), byrow = TRUE)
+    })
     
     # create matrix from vector before multiplying
    #P_matrix <- P
     Z_matrix = P * matrix(alpha, dim(P)[1], length(alpha), byrow = TRUE)
     identical(Z_sweep, Z_matrix)
     identical(P_matrix, P)
+    Z_col = P * alpha[col(P)]
+    identical(Z_sweep, Z_col)
 
+    output = apply(P, 2, alpha)
+    identical(output, Z_sweep)
+#########################################
+# memory
+library(profmem)
+profmem({
+      Z_sweep = sweep( P, 2, alpha, '*')
+    })
+
+profmem({
+  Z_matrix = P * matrix(alpha, dim(P)[1], length(alpha), byrow = TRUE)
+}) 
+
+profmem({
+  Z_rep2 = P * rep(alpha, rep.int(nrow(P), length(alpha)))
+}) 
+#########################################
+
+#########################################
+Z_rep = P * rep(alpha, each = nrow(P))
+identical(Z_rep, Z_sweep)
+Z_rep2 = P * rep(alpha, rep.int(nrow(P), length(alpha)))
+identical(Z_rep, Z_rep2)
+#########################################
+
+require( Rcpp )
+
+#  Source code for our function
+func <- 'NumericMatrix mmult( NumericMatrix m , NumericVector v , bool byrow = true ){
+if( byrow );
+if( ! m.nrow() == v.size() ) stop("Non-conformable arrays") ;
+if( ! byrow );
+if( ! m.ncol() == v.size() ) stop("Non-conformable arrays") ;
+
+NumericMatrix out(m) ;
+
+if( byrow ){
+for (int j = 0; j < m.ncol(); j++) {
+for (int i = 0; i < m.nrow(); i++) {
+out(i,j) = m(i,j) * v[j];
+}
+}
+}
+if( ! byrow ){
+for (int i = 0; i < m.nrow(); i++) {
+for (int j = 0; j < m.ncol(); j++) {
+out(i,j) = m(i,j) * v[i];
+}
+}
+}
+return out ;
+}'
+
+#  Make it available
+sourceCpp("/Users/tiffanytu/Documents/fall 2020/rotation1/ligera/src/armMult_cpp.cpp")
+
+#  Use it
+res1 <- mmult( m , v )
