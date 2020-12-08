@@ -30,3 +30,7 @@
   - Added option `m_chunk_max` to further reduce memory usage (compared to previous default) without sacrificing speed.
   - Added script wrappers (located in `scripts/`) for main 3 versions of ligera, each with a `--multi` option to also cover the 3 multiscan versions (actually added 2020-09-29)
   - Added sample files to go with scripts (also located in `scripts/`; also added 2020-09-29)
+
+# 2020-12-08 - ligera 1.0.6.9000
+
+* Minor internal improvement (in function `conj_grad_scan_bed_wcpp`) affecting `ligera2_bed` and `ligera2_bed_multi` versions only.

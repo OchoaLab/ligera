@@ -52,12 +52,15 @@ conj_grad_scan_bed_wcpp <- function(
 
     # starting point for solution is all zeroes
     # same dim as Y
+    # Z will hold unconverged subset of data
     Z <- matrix(
         0,
         nrow = n_ind_kept,
         ncol = k_covars
     )
-    # other internal matrices, which get updated as we go (columns drop as we converge)
+    # Z_final stores converged columns only (unconverged are zeroes until they converge)
+    Z_final <- Z
+    # other internal matrices, which get updated as we go (columns drop as we converge, like Z but not Z_final)
     # residuals, initial values, updating as we progress
     # R <- Y - kinship %*% Z
     R <- Y
@@ -66,11 +69,12 @@ conj_grad_scan_bed_wcpp <- function(
     # residual norms
     Rn <- colSums( R^2 )
     # different covariate columns may converge at different times, let's keep track of that
+    # this corresponds to Z_final colums (not Z columns because they drop out as we go)
     not_converged <- rep.int( TRUE, k_covars )
-
+    
     # start loop
     while ( any( not_converged ) ) {
-        # P and R matrices are always non-converged subsets!
+        # Z, P and R matrices are always non-converged subsets!
 
         # NOTE: this is the slowest part!
         KP <- popkin_prod_bed_cpp(
@@ -87,23 +91,26 @@ conj_grad_scan_bed_wcpp <- function(
         # another vector of the same length
         alpha <- Rn / colSums(P * KP)
         # sweep makes alpha multiply every row of P, KP (normal product is by columns)
-        Z[ , not_converged ] <- Z[ , not_converged ] + sweep( P, 2, alpha, '*')
+        Z <- Z + sweep( P, 2, alpha, '*')
         R <- R - sweep( KP, 2, alpha, '*')
         # new residuals vector
         Rn1 <- colSums( R^2 )
         # take action if something has converged!
         new_converged <- Rn1 < tol
         if ( any( new_converged ) ) {
-            # write to Z if needed
-            # subset P,R,Rn so unconverged columns are left only
-            still_not_converged <- Rn1 >= tol # columns of not_converged subset
-            # if matrices drop to vectors, sweep complains (just below) :(
+            # determine newly converged columns in terms of Z_final columns
+            new_converged_in_final <- which( not_converged )[ new_converged ]
+            # transfer converged columns from Z to Z_final
+            Z_final[ , new_converged_in_final ] <- Z[ , new_converged ]
+            # subset Z,P,R,Rn so unconverged columns are left only
+            # matrices shouldn't drop to vectors (sweep dies)
+            Z <- Z[ , !new_converged, drop = FALSE ]
             P <- P[ , !new_converged, drop = FALSE ]
             R <- R[ , !new_converged, drop = FALSE ]
             Rn <- Rn[ !new_converged ]
             Rn1 <- Rn1[ !new_converged ]
             # update not_converged indicators
-            not_converged[ which(not_converged)[ new_converged ] ] <- FALSE
+            not_converged[ new_converged_in_final ] <- FALSE
             # save a little bit of time in the last iteration by returning after this happens
             if ( !any( not_converged ) )
                 break
@@ -115,5 +122,5 @@ conj_grad_scan_bed_wcpp <- function(
     }
     
     # after everything has converged, return the matrix of interest!
-    return( Z )
+    return( Z_final )
 }
