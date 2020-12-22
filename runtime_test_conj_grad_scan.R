@@ -588,5 +588,3 @@ microbenchmark(
   times = 10L,
   setup = {P <- matrix(runif(P), ncol = 2); alpha <- runif(Rn / colSums(P * KP))}
 )
-
-#############################

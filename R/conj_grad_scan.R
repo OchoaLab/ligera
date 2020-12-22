@@ -56,6 +56,10 @@ conj_grad_scan <- function(
         nrow = n_ind,
         ncol = k_covars
     )
+    
+    # Z_final stores converged columns only (unconverged are zeroes until they converge)
+    Z_final <- Z
+    
     # other internal matrices, which get updated as we go (columns drop as we converge)
     # residuals, initial values, updating as we progress
     # R <- Y - kinship %*% Z
@@ -107,38 +111,41 @@ conj_grad_scan <- function(
         
         # another vector of the same length
         alpha <- Rn / colSums(P * KP)
-        # sweep makes alpha multiply every row of P, KP (normal product is by columns)
-        Z[ , not_converged ] <- Z[ , not_converged ] + sweep( P, 2, alpha, '*')
-        R <- R - sweep( KP, 2, alpha, '*')
+        # replaced sweep with matrix method
+        Z <- Z + P * matrix(alpha, dim(P)[1], length(alpha), byrow = TRUE)
+        R <- R - KP * matrix(alpha, dim(KP)[1], length(alpha), byrow = TRUE)
         # new residuals vector
         Rn1 <- colSums( R^2 )
         # take action if something has converged!
         new_converged <- Rn1 < tol
         if ( any( new_converged ) ) {
-            # write to Z if needed
-            # subset P,R,Rn so unconverged columns are left only
-            still_not_converged <- Rn1 >= tol # columns of not_converged subset
-            # if matrices drop to vectors, sweep complains (just below) :(
+            # determine newly converged columns in terms of Z_final columns
+            new_converged_in_final <- which( not_converged )[ new_converged ]
+            # transfer converged columns from Z to Z_final
+            Z_final[ , new_converged_in_final ] <- Z[ , new_converged ]
+            # subset Z,P,R,Rn so unconverged columns are left only
+            # matrices shouldn't drop to vectors (sweep dies)
+            Z <- Z[ , !new_converged, drop = FALSE ]
             P <- P[ , !new_converged, drop = FALSE ]
             R <- R[ , !new_converged, drop = FALSE ]
             Rn <- Rn[ !new_converged ]
             Rn1 <- Rn1[ !new_converged ]
             # update not_converged indicators
-            not_converged[ which(not_converged)[ new_converged ] ] <- FALSE
+            not_converged[ new_converged_in_final ] <- FALSE
             # save a little bit of time in the last iteration by returning after this happens
             if ( !any( not_converged ) )
                 break
         }
         # if there are still unconverged things, keep updating things
         # have to "sweep" the `beta = Rn1 / Rn` too, to go across rows instead of columns
-        P <- R + sweep( P, 2, Rn1 / Rn, '*')
+        P <- R + P * matrix((Rn1/Rn), dim(P)[1], length((Rn1/Rn)), byrow = TRUE)
         Rn <- Rn1
     }
     
     # after everything has converged, return the matrix of interest!
     return(
         list(
-            Z = Z,
+            Z = Z_final,
             inbr = inbr
         )
     )

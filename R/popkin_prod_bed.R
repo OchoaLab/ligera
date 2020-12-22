@@ -117,8 +117,8 @@ popkin_prod_bed <- function (
     # complete final step in KP calculation
     # normalize
     KP <- KP / m_loci
-    # and subtract b * colSums( P ), using sweep so it's along the rows
-    KP <- sweep( KP, 2, b * colSums( P ), '-')
+    # replace sweep with matrix method
+    KP <- KP - matrix((b * colSums( P )), dim(P)[1], length(b * colSums( P )), byrow = TRUE)
     # I thought renormalizing by (1-b) shouldn't matter, and it saves time to skip it (on huge matrices)
     # renormalize for unit tests though, actually it does matter elsewhere, surprisingly
     KP <- KP / ( 1 - b )
