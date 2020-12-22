@@ -15,7 +15,7 @@ name_out = "sample_ligera2"
 mean_kinship = 0.15
 
 # remember to set working directory
-# setwd("~/Documents/fall 2020/rotation1/ligera/scripts")
+# setwd("~/Documents/fall 2020/rotation1/scripts")
 X <- BEDMatrix( name )
 # read the full BIM and FAM tables too
 bim <- read_bim( name )
@@ -582,10 +582,10 @@ conj_grad_scan_bed_wcpp_matrix_test <- function(
 }
 
 microbenchmark(
-  conj_grad_scan_bed_wcpp_test(file, m_loci, n_ind, Y, b, indexes_ind = NULL, tol = 1e-15),
-  conj_grad_scan_bed_wcpp_matrix_test(file, m_loci, n_ind, Y, b, indexes_ind = NULL, tol = 1e-15),
+  conj_grad_scan_bed_wcpp(file, m_loci, n_ind, Y, b, indexes_ind = NULL, tol = 1e-15),
+  conj_grad_scan_bed_wcpp_matrix(file, m_loci, n_ind, Y, b, indexes_ind = NULL, tol = 1e-15),
   #conj_grad_scan_bed_wcpp_trans(file, m_loci, n_ind, Y, b, indexes_ind = NULL, tol = 1e-15),
-  times = 100L,
+  times = 10L,
   setup = {P <- matrix(runif(P), ncol = 2); alpha <- runif(Rn / colSums(P * KP))}
 )
 
