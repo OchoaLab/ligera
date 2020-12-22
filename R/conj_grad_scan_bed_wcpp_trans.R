@@ -115,5 +115,6 @@ conj_grad_scan_bed_wcpp_trans <- function(
     }
     
     # after everything has converged, return the matrix of interest!
+    message('conj_grad - function check - double transpose')
     return( Z )
 }

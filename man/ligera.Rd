@@ -13,7 +13,7 @@ ligera(
   covar = NULL,
   loci_on_cols = FALSE,
   mem_factor = 0.7,
-  mem_lim = NA,
+  mem_lim = 1,
   tol = 1e-15,
   maxIter = 1e+06
 )

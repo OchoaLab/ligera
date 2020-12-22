@@ -4,7 +4,7 @@ NULL
 
 #' LIGERA2 BED: LIght GEnetic Robust Association main function
 #'
-#' This function performs the genetic association tests on every locus of a genotype matrix against a quantitative trait, implicitly computing the kinship matrix in a way that scales better than an explicit kinship estimate.
+#' MATRIX method - This function performs the genetic association tests on every locus of a genotype matrix against a quantitative trait, implicitly computing the kinship matrix in a way that scales better than an explicit kinship estimate.
 #' The function returns a tibble containing association statistics and several intermediates.
 #' This optimized version requires the genotypes to be in a file in BED format.
 #' 
@@ -139,7 +139,8 @@ ligera2_bed_matrix <- function(
         indexes_ind = indexes_ind,
         tol = tol
     )
-
+    message('ligera2_bed_matrix() - function check...')
+    
     # new way to abstract the rest of these
     obj <- get_proj_denom_multi( Z, Y ) # defaults hold: trait_only = TRUE, trait_index = 1
     proj <- obj$proj

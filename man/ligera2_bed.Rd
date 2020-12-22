@@ -12,7 +12,7 @@ ligera2_bed(
   mean_kinship,
   covar = NULL,
   mem_factor = 0.7,
-  mem_lim = NA,
+  mem_lim = 1,
   tol = 1e-15
 )
 }
