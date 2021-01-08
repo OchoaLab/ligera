@@ -90,9 +90,15 @@ conj_grad_scan_bed_wcpp <- function(
         
         # another vector of the same length
         alpha <- Rn / colSums(P * KP)
-        # sweep makes alpha multiply every row of P, KP (normal product is by columns)
-        Z <- Z + sweep( P, 2, alpha, '*')
-        R <- R - sweep( KP, 2, alpha, '*')
+        # multiply matrices by alpha along rows (instead of columns, which is R default)
+        alpha_mat <- matrix(
+            alpha,
+            nrow = n_ind_kept,
+            ncol = length( alpha ),
+            byrow = TRUE
+        )
+        Z <- Z + P * alpha_mat
+        R <- R - KP * alpha_mat
         # new residuals vector
         Rn1 <- colSums( R^2 )
         # take action if something has converged!
@@ -103,7 +109,7 @@ conj_grad_scan_bed_wcpp <- function(
             # transfer converged columns from Z to Z_final
             Z_final[ , new_converged_in_final ] <- Z[ , new_converged ]
             # subset Z,P,R,Rn so unconverged columns are left only
-            # matrices shouldn't drop to vectors (sweep dies)
+            # matrices shouldn't drop to vectors (or matrix products die)
             Z <- Z[ , !new_converged, drop = FALSE ]
             P <- P[ , !new_converged, drop = FALSE ]
             R <- R[ , !new_converged, drop = FALSE ]
@@ -116,8 +122,13 @@ conj_grad_scan_bed_wcpp <- function(
                 break
         }
         # if there are still unconverged things, keep updating things
-        # have to "sweep" the `beta = Rn1 / Rn` too, to go across rows instead of columns
-        P <- R + sweep( P, 2, Rn1 / Rn, '*')
+        # multiply `Rn1 / Rn` too across rows instead of columns
+        P <- R + P * matrix(
+                         Rn1 / Rn,
+                         nrow = n_ind_kept,
+                         ncol = length( Rn1 ),
+                         byrow = TRUE
+                     )
         Rn <- Rn1
     }
     
