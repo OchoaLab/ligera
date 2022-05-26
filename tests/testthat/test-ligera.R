@@ -3,7 +3,7 @@ library(popkin) # inbr
 
 # simulate X (to share across tests)
 # create a simple matrix with random valid data
-n <- 100
+n <- 20
 m <- 1000
 # create ancestral allele frequencies
 p_anc <- runif( m )

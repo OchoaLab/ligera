@@ -49,3 +49,8 @@
 - Reformatted this `NEWS.md` slightly to improve its automatic parsing.
 - Removed "LazyData: true" from DESCRIPTION (to avoid a new "NOTE" on CRAN).
 
+# ligera 1.0.8.9000 (2022-05-26)
+
+- Unit tests: reduced simulation size (`n = 20`, from 100; left `m = 1000`)
+  - Reduced its runtime to 3.4s (before it was highly variable but excessive, between 60s-131s).
+  - Reduction does not appear to increase testing artifacts (such as singular matrix inversions).
