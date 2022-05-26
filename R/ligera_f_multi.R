@@ -2,7 +2,8 @@
 #'
 #' This function performs multiple genetic association scans, adding one significant locus per iteration to the model (modeled as a covariate) to increase power in the final model.
 #' The function returns a tibble containing association statistics and several intermediates.
-#' This version calculates p-values using a Wald test.
+#' This version calculates p-values using an F-test, which gives calibrated statistics under both quantitative and binary traits.
+#' Compared to [ligera()], which uses the faster Wald test (calibrated for quantitative but not binary traits), this F-test version is quite a bit slower, and is optimized for `m >> n`, so it is a work in progress.
 #' 
 #' Suppose there are `n` individuals and `m` loci.
 #'
@@ -12,7 +13,6 @@
 #' @param q_cut The q-value threshold to admit new loci into the polygenic model.
 #' @param one_per_iter If true, only the most significant locus per iteration is added to model of next iteration.  Otherwise all significant loci per iteration are added to the model of next iteration.
 #' @param kinship_inv The optional matrix inverse of the kinship matrix.  Setting this parameter is not recommended, as internally a conjugate gradient method (`\link[cPCG]{cgsolve}`) is used to implicitly invert this matrix, which is much faster.  However, for very large numbers of traits without missingness and the same kinship matrix, inverting once might be faster.
-#' @param inbr An optional length-`n` vector of inbreeding coefficients.  Defaults to the inbreeding coefficients extracted from the provided `kinship` matrix.  This parameter, intended for internal use only, enables direct comparison to the `ligera2` version.
 #' @param covar An optional `n`-by-`K` matrix of `K` covariates, aligned with the individuals.
 #' @param loci_on_cols If `TRUE`, `X` has loci on columns and individuals on rows; if false (the default), loci are on rows and individuals on columns.
 #' If `X` is a BEDMatrix object, `loci_on_cols = TRUE` is set automatically.
@@ -31,9 +31,8 @@
 #' 
 #' - `pval`: The p-value of the last association scan.
 #' - `beta`: The estimated effect size coefficient for the trait vector at this locus.
-#' - `beta_std_dev`: The estimated coefficient variance of this locus (varies due to dependence on minor allele frequency).
-#' - `p_q`: The allele variance estimate (estimate of `p*(1-p)`).  The number of heterozygotes, weighted by inbreeding coefficient, and with pseudocounts included, is used in this estimate (in other words, it does not equal MAF * ( 1 - MAF ), where MAF is the marginal allele frequency.
-#' - `t_stat`: The test statistic, equal to `beta / beta_std_dev`.
+#' - `f_stat`: The F statistic.
+#' - `df`: degrees of freedom: number of non-missing individuals minus number of parameters of full model
 #' - `qval`: The q-value of the last association scan.
 #' - `sel`: the order in which loci were selected, or zero if they were not selected.
 #'
@@ -55,30 +54,29 @@
 #' # kinship matrix
 #' kinship <- diag( n_ind ) / 2 # unstructured case
 #'
-#' tib <- ligera_multi( X, trait, kinship )
+#' tib <- ligera_f_multi( X, trait, kinship )
 #' tib
 #'
 #' @seealso
 #' The `popkin` and `cPCG` packages.
 #' 
 #' @export
-ligera_multi <- function(
-                         X,
-                         trait,
-                         kinship,
-                         q_cut = 0.05,
-                         one_per_iter = FALSE,
-                         kinship_inv = NULL,
-                         inbr = popkin::inbr(kinship),
-                         covar = NULL,
-                         loci_on_cols = FALSE,
-                         mem_factor = 0.7,
-                         mem_lim = NA,
-                         m_chunk_max = 1000,
-                         # cgsolve options
-                         tol = 1e-15, # default 1e-6
-                         maxIter = 1e6 # default 1e3
-                         ) {
+ligera_f_multi <- function(
+                           X,
+                           trait,
+                           kinship,
+                           q_cut = 0.05,
+                           one_per_iter = FALSE,
+                           kinship_inv = NULL,
+                           covar = NULL,
+                           loci_on_cols = FALSE,
+                           mem_factor = 0.7,
+                           mem_lim = NA,
+                           m_chunk_max = 1000,
+                           # cgsolve options
+                           tol = 1e-15, # default 1e-6
+                           maxIter = 1e6 # default 1e3
+                           ) {
     # things to initialize for loop
     # indexes of selected loci, to remember
     loci_selected <- c()
@@ -97,12 +95,11 @@ ligera_multi <- function(
 
         # run ligera
         # NOTE: selected loci become insigificant when retested
-        tib <- ligera(
+        tib <- ligera_f(
             X = X,
             trait = trait,
             kinship = kinship,
             kinship_inv = kinship_inv,
-            inbr = inbr,
             covar = covar,
             loci_on_cols = loci_on_cols,
             mem_factor = mem_factor,

@@ -1,6 +1,6 @@
 Package: ligera
 Title: LIght GEnetic Robust Association
-Version: 1.0.6.9000
+Version: 1.0.7.9000
 Authors@R: 
     person(given = "Alejandro",
 	   family = "Ochoa",
@@ -10,9 +10,8 @@ Authors@R:
 Description: Implements a fast genetic association approach robust to all forms of population and family structure and umodeled environmental effects.
 License: GPL-3
 Encoding: UTF-8
-LazyData: true
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.1.1
+RoxygenNote: 7.2.0
 Imports:
     popkin,
     cPCG,

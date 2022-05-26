@@ -2,7 +2,8 @@
 #'
 #' This function performs the genetic association tests on every locus of a genotype matrix against a quantitative trait, given a precomputed kinship matrix.
 #' The function returns a tibble containing association statistics and several intermediates.
-#' This version calculates p-values using a Wald test.
+#' This version calculates p-values using an F-test, which gives calibrated statistics under both quantitative and binary traits.
+#' Compared to [ligera()], which uses the faster Wald test (calibrated for quantitative but not binary traits), this F-test version is quite a bit slower, and is optimized for `m >> n`, so it is a work in progress.
 #' 
 #' Suppose there are `n` individuals and `m` loci.
 #'
@@ -10,7 +11,6 @@
 #' @param trait The length-`n` trait vector, which may be real valued and contain missing values.
 #' @param kinship The `n`-by-`n` kinship matrix, estimated by other methods (i.e. the `popkin` package).
 #' @param kinship_inv The optional matrix inverse of the kinship matrix.  Setting this parameter is not recommended, as internally a conjugate gradient method (`\link[cPCG]{cgsolve}`) is used to implicitly invert this matrix, which is much faster.  However, for very large numbers of traits without missingness and the same kinship matrix, inverting once might be faster.
-#' @param inbr An optional length-`n` vector of inbreeding coefficients.  Defaults to the inbreeding coefficients extracted from the provided `kinship` matrix.  This parameter, intended for internal use only, enables direct comparison to the `ligera2` version.
 #' @param covar An optional `n`-by-`K` matrix of `K` covariates, aligned with the individuals.
 #' @param loci_on_cols If `TRUE`, `X` has loci on columns and individuals on rows; if false (the default), loci are on rows and individuals on columns.
 #' If `X` is a BEDMatrix object, `loci_on_cols = TRUE` is set automatically.
@@ -28,9 +28,8 @@
 #' 
 #' - `pval`: The p-value of the association test
 #' - `beta`: The estimated effect size coefficient for the trait vector at this locus
-#' - `beta_std_dev`: The estimated coefficient variance of this locus (varies due to dependence on minor allele frequency)
-#' - `p_q`: The allele variance estimate (estimate of `p*(1-p)`).  The number of heterozygotes, weighted by inbreeding coefficient, and with pseudocounts included, is used in this estimate (in other words, it does not equal MAF * ( 1 - MAF ), where MAF is the marginal allele frequency.
-#' - `t_stat`: The test statistic, equal to `beta / beta_std_dev`.
+#' - `f_stat`: The F statistic
+#' - `df`: degrees of freedom: number of non-missing individuals minus number of parameters of full model
 #'
 #' @examples
 #' # Construct toy data
@@ -45,36 +44,31 @@
 #' trait <- 1 : 3
 #' kinship <- diag( 3 ) / 2 # unstructured case
 #'
-#' tib <- ligera( X, trait, kinship )
+#' tib <- ligera_f( X, trait, kinship )
 #' tib
 #'
 #' @seealso
 #' The `popkin` and `cPCG` packages.
 #' 
 #' @export
-ligera <- function(
-                   X,
-                   trait,
-                   kinship,
-                   kinship_inv = NULL,
-                   inbr = popkin::inbr(kinship),
-                   covar = NULL,
-                   loci_on_cols = FALSE,
-                   mem_factor = 0.7,
-                   mem_lim = NA,
-                   m_chunk_max = 1000,
-                   # cgsolve options
-                   tol = 1e-15, # default 1e-6
-                   maxIter = 1e6 # default 1e3
-                   ) {
+ligera_f <- function(
+                     X,
+                     trait,
+                     kinship,
+                     kinship_inv = NULL,
+                     covar = NULL,
+                     loci_on_cols = FALSE,
+                     mem_factor = 0.7,
+                     mem_lim = NA,
+                     m_chunk_max = 1000,
+                     # cgsolve options
+                     tol = 1e-15, # default 1e-6
+                     maxIter = 1e6 # default 1e3
+                     ) {
     # - supports missingness in trait (exact kinship matrix inverse in those cases)
     # TODO
     # - support true missingness in genotypes (inversion of matrix subsets, etc; right now only approximate)
 
-    # some internal constants (preserving old tests)
-    hetz <- TRUE
-    hetz_indiv_inbr <- TRUE
-    
     # informative errors when things are missing
     if ( missing( X ) )
         stop( 'Genotype matrix `X` is required!' )
@@ -139,50 +133,68 @@ ligera <- function(
         n_ind <- length( trait )
         # NOTE: only genotypes are left to filter with indexes_ind
     }
-
+    
     # gather matrix of trait, intercept, and optional covariates
-    Y <- cbind( trait, 1 )
+    Y1 <- cbind( trait, 1 )
     # add covariates, if present
     if ( !is.null( covar ) ) {
         # handle NAs now, so final Y has no missingness whatsoever
         covar <- covar_fix_na( covar )
-        Y <- cbind( Y, covar )
+        Y1 <- cbind( Y1, covar )
     }
     # compute inverse if needed
     if ( is.null( kinship_inv ) ) {
-        Z <- cgsolve_mat( kinship, Y, tol = tol, maxIter = maxIter )
+        Z1 <- cgsolve_mat( kinship, Y1, tol = tol, maxIter = maxIter )
     } else {
         # use kinship inverse if given
-        Z <- kinship_inv %*% Y
-    }
-    # new way to abstract the rest of these
-    obj <- get_proj_denom_multi( Z, Y )
-    proj <- obj$proj
-    beta_var_fac <- obj$var
-
-    ##############################
-    ### EFFECT SIZE ESTIMATION ###
-    ##############################
-
-    if ( hetz ) {
-        if ( hetz_indiv_inbr ) {
-            # correct for inbreeding bias on a per-individual basis!
-            # formulate as using weights (but these don't sum to one)
-            weights_inbr <- 1 / ( 1 - inbr ) / 2
-        } else {
-            # the correction term is a scalar (same for all indvidiuals)
-            weights_inbr <- 1 / ( 1 - popkin::fst(kinship) ) / 2
-        }
-    } else {
-        # to correct for a variance bias
-        # will assume uniform weights!
-        mean_kinship <- popkin::mean_kinship(kinship)
+        Z1 <- kinship_inv %*% Y1
     }
     
+    # need null model too
+    # just remove first column of these two
+    Y0 <- Y1[ , -1, drop = FALSE ]
+    Z0 <- Z1[ , -1, drop = FALSE ]
+    
+    # calculate other intermediate parts
+    # all have dimensions n x k
+    H1 <- Z1 %*% solve( crossprod( Y1, Z1 ) )
+    H0 <- Z0 %*% solve( crossprod( Y0, Z0 ) )
+
+    ## OLD
+    # another recurrent product for getting residuals/stats
+    # dimensions n x n
+    R1 <- tcrossprod( Y1, H1 ) - diag( n_ind )
+    R0 <- tcrossprod( Y0, H0 ) - diag( n_ind )
+    # O(n^2*k)
+
+    ## OLD
+    # last thing is matrix that returns sums of residuals quickly
+    # dimensions n x n
+    # NOTE: here conjugate gradient probably isn't very efficient, as products are as big as explicit inverse :(  Better luck computing residuals more directly from genotypes!
+    if ( is.null( kinship_inv ) ) {
+        R1 <- crossprod( R1, cgsolve_mat( kinship, R1, tol = tol, maxIter = maxIter ) )
+        R0 <- crossprod( R0, cgsolve_mat( kinship, R0, tol = tol, maxIter = maxIter ) )
+    } else {
+        # use kinship inverse if given
+        R1 <- crossprod( R1, kinship_inv %*% R1 )
+        R0 <- crossprod( R0, kinship_inv %*% R0 )
+    }
+    # O(n^3.5 + n^3)
+
+    ## ## NEW3
+    ## HZ1 <- tcrossprod( H1, Z1 )
+    ## HZ0 <- tcrossprod( H0, Z0 )
+    ## # O( n^2*k )
+    
+    ##############################
+    ### COEFFICIENT ESTIMATION ###
+    ##############################
+
     # initialize output vectors
     # Do before get_mem_lim_m so free memory is accounted for properly
     beta <- vector('numeric', m_loci)
-    p_q <- vector('numeric', m_loci)
+    f_stat <- vector('numeric', m_loci)
+    df <- vector('numeric', m_loci)
     
     # this overcounts since there are logical branches, not all overlap, but meh seriously
     # as usual, this should be conservative
@@ -192,23 +204,24 @@ ligera <- function(
     # # indexes_loci_chunk
     # vec_m, double
     # # drop( Xi %*% proj )
-    # # p_q_i
-    # # p_anc_hat_i
+    # # res1, res0
     #
     # vec_n # int
     # # n_ind_no_NA
     #
-    # mat_m_n # all ints
+    # mat_m_n int
     # # Xi
     # # M # unnamed
     # # ( Xi == 1 )
+    # mat_m_n double
+    # # Res1, Res0
     # add one more double copy of Xi, this happens in matrix operations, are only temporary unnamed matrices
     
     # estimating total memory usage in bytes
     data <- popkin:::solve_m_mem_lim(
                          n = n_ind,
                          m = m_loci,
-                         mat_m_n = 3,
+                         mat_m_n = 5,
                          vec_m = 3.5,
                          vec_n = 0.5,
                          mem = mem_lim,
@@ -251,73 +264,103 @@ ligera <- function(
         Xi[ is.na(Xi) ] <- 0L
         
         # the coefficients are simply the genotypes projected!
+        # these are matrices though, a vector for every locus (entry for every covariate)
         # adjust for the NAs? (not sure if this is reasonable or not yet)
-        beta[ indexes_loci_chunk ] <- drop( Xi %*% proj ) * n_ind / n_ind_no_NA
+        # store trait coefficients
+        # projection for trait coefficient H1[,1] only
+        beta[ indexes_loci_chunk ] <- drop( Xi %*% H1[ , 1 ] ) * n_ind / n_ind_no_NA
+
+        ## ## NEW3
+        ## ssr1 <- rowSums( ( Xi %*% HZ1 ) * Xi )
+        ## ssr0 <- rowSums( ( Xi %*% HZ0 ) * Xi )
+        ## # O( m*n^2 )
+
+        ## ## NEW2
+        ## ssr1 <- rowSums( ( Xi %*% H1 ) * ( Xi %*% Z1 ) )
+        ## ssr0 <- rowSums( ( Xi %*% H0 ) * ( Xi %*% Z0 ) )
+        ## # O( m*n*k + m*k^2 )
+        ## # shared by NEW2 and NEW3
+        ## # then sums of residuals weighted by inverse kinship
+        ## if ( is.null( kinship_inv ) ) {
+        ##     ssrx <- rowSums( cgsolve_mat( kinship, Xi, transpose = TRUE, tol = tol, maxIter = maxIter ) * Xi )
+        ##     # O( n^2.5*m + n^2*m )
+        ## } else {
+        ##     # use kinship inverse if given
+        ##     ssrx <- rowSums( ( Xi %*% kinship_inv ) * Xi )
+        ## }
+
+        ## ## NEW
+        ## # rest are for getting residuals
+        ## # NOTE: here missing values are just not part of sums, so setting them to zero is perfectly fine
+        ## # alt model first
+        ## R <- Xi - tcrossprod( Xi %*% H1, Y1 )
+        ## # O( m*n*k )
+        ## # then sums of residuals weighted by inverse kinship
+        ## if ( is.null( kinship_inv ) ) {
+        ##     ssr1 <- rowSums( cgsolve_mat( kinship, R, transpose = TRUE, tol = tol, maxIter = maxIter ) * R )
+        ##     # O( n^2.5*m + n^2*m )
+        ## } else {
+        ##     # use kinship inverse if given
+        ##     ssr1 <- rowSums( ( R %*% kinship_inv ) * R )
+        ## }
+        ## # repeat for null model now
+        ## R <- Xi - tcrossprod( Xi %*% H0, Y0 )
+        ## if ( is.null( kinship_inv ) ) {
+        ##     ssr0 <- rowSums( cgsolve_mat( kinship, R, transpose = TRUE, tol = tol, maxIter = maxIter ) * R )
+        ## } else {
+        ##     # use kinship inverse if given
+        ##     ssr0 <- rowSums( ( R %*% kinship_inv ) * R )
+        ## }
+
+        ## OLD
+        # Xi %*% t(RX) are dims m_chunk x n
+        # NOTE: here missing values are just not part of sums, so setting them to zero is perfectly fine
+        ssr1 <- rowSums( tcrossprod( Xi, R1 ) * Xi )
+        ssr0 <- rowSums( tcrossprod( Xi, R0 ) * Xi )
+        # O(m*n^2)
         
-        ###########################
-        ### VARIANCE ESTIMATION ###
-        ###########################
-
-        if (hetz) {
-            # instead of estimating p_anc_hat first, here we estimate p*q per individual (that's what counting heterozygotes does), then average
-            if ( hetz_indiv_inbr ) {
-                # the desired "average"
-                p_q_i <- drop( ( Xi == 1 ) %*% weights_inbr ) / n_ind_no_NA
-            } else {
-                # bias in this case is given by FST (we correct), not mean_kinship (as for p_anc_hat version below):
-                p_q_i <- rowSums( Xi == 1 ) / n_ind_no_NA * weights_inbr 
-            }
-
-            # in all hetz cases we need to regularize, as zero estimates are possible (likely even on the genome-wide level) and ruin inference completely
-            # this is the crudest "laplace prior"-like version that prevents zeroes and is more conservative at rarer loci (which is good)
-            # un-average the previous p_q by multiplying it by the sample size n_ind, then apply the correction and renormalize again.
-            p_q_i <- ( 1 + n_ind_no_NA * p_q_i ) / ( 2 + n_ind_no_NA )
-            
-        } else {
-            # compute all p_anc_hat, vectorizing
-            p_anc_hat_i <- rowSums( Xi ) / n_ind_no_NA / 2
-            
-            # construct final estimate of p*q
-            # includes (1 - mean_kinship) bias correction for this particular estimation approach
-            p_q_i <- p_anc_hat_i * ( 1 - p_anc_hat_i ) / (1 - mean_kinship)
-        }
-        # transfer this vector to main one
-        p_q[ indexes_loci_chunk ] <- p_q_i
+        # calculate F statistic now that all the parts are in place!
+        # here NAs are accounted for in formula (to be normalized in the end!
+        f_stat[ indexes_loci_chunk ] <- (ssr0 - ssr1) / ssr1 # OLD/NEW
+        #f_stat[ indexes_loci_chunk ] <- (ssr1 - ssr0) / (ssrx - ssr1) # NEW2/3
+        df[ indexes_loci_chunk ] <- n_ind_no_NA - ncol( Y1 )
         
         # update starting point for next chunk! (overshoots at the end, that's ok)
         i_chunk <- i_chunk + m_chunk
     }
-
-    # construct final variance estimate of beta
-    beta_std_dev <- sqrt( 4 * p_q * beta_var_fac )
-    
-    ####################
-    ### T-STATISTICS ###
-    ####################
-    
-    # the test t-statistics
-    t_stat <- beta / beta_std_dev
-    
-    # replace infinities with NAs
-    t_stat[ is.infinite(t_stat) ] <- NA
+    # OLD:
+    # O(n^2*k + n^3.5 + n^3 + m*n^2)
+    #
+    # NEW:
+    # O( m*n*k + n^2.5*m + n^2*m )
+    # does appear worse by trading some n's by m's
+    #
+    # NEW2:
+    # O( m*n*k + m*k^2 + n^2.5*m + n^2*m )
+    # practically the same as NEW, if not a tad worse :(
+    #
+    # NEW3:
+    # O( n^2*k + m*n^2 + n^2.5*m )
+    # still worse than OLD but only trades on n by m
+    # better than NEW2 trading on m by n
     
     ################
     ### P-VALUES ###
     ################
-    
-    # Get naive p-values assuming a null t-distribution with the obvious degrees of freedom
-    # so far I know this is wrong (the true tails are longer), may need to adjust the degrees of freedom (not yet known how exactly)
-    # NOTE: two-sided test!
-    pval <- 2 * stats::pt(-abs(t_stat), n_ind-1)
 
+    # normalize stats
+    f_stat <- f_stat * df
+    
+    # Get p-values for F test!!! (should be exact)
+    pval <- stats::pf( f_stat, 1, df, lower.tail = FALSE )
+    
     # done, return quantities of interest (nice table!)
     return(
         tibble::tibble(
             pval = pval,
             beta = beta,
-            beta_std_dev = beta_std_dev,
-            p_q = p_q,
-            t_stat = t_stat
+            f_stat = f_stat,
+            df = df
         )
     )
 }

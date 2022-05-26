@@ -14,7 +14,7 @@ Install the latest development version from GitHub:
 ```R
 install.packages("devtools") # if needed
 library(devtools)
-install_github("OchoaLab/ligera", build_opts = c())
+install_github("OchoaLab/ligera")
 ```
 
 ## Example
