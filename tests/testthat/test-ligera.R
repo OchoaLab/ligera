@@ -38,9 +38,8 @@ X_miss[ sample( n * m, n * m * miss ) ] <- NA
 X_miss <- redraw_fixed( X_miss )
 
 # true kinship matrix in this unstructured case is I / 2
-kinship <- diag( n ) / 2
-mean_kinship <- mean( kinship )
-kinship_inv <- solve( kinship )
+# don't use that trivial case in examples (fails to test WG bias), but do use its true mean kinship for other things
+mean_kinship <- mean( diag( n ) / 2 )
 
 # simulate phenotype (to share across tests)
 trait <- rnorm( n )
@@ -208,26 +207,26 @@ test_that("ligera stops when needed", {
     # singletons (2 things missing)
     expect_error( ligera( X ) )
     expect_error( ligera( trait = trait ) )
-    expect_error( ligera( kinship = kinship ) )
+    expect_error( ligera( kinship = kinship_est ) )
     # pairs (1 thing missing)
     expect_error( ligera( X, trait ) )
-    expect_error( ligera( X, kinship = kinship ) )
-    expect_error( ligera( trait = trait, kinship = kinship ) )
+    expect_error( ligera( X, kinship = kinship_est ) )
+    expect_error( ligera( trait = trait, kinship = kinship_est ) )
 
     # other validations, when all three are present but some are wrong (wrong dimensions, lack of symmetry, etc)
     # here genotype has wrong number of individuals, compared to other two
-    expect_error( ligera( X[ , -1 ], trait, kinship ) )
+    expect_error( ligera( X[ , -1 ], trait, kinship_est ) )
     # here trait is wrong length
-    expect_error( ligera( X, trait[ -1 ], kinship ) )
+    expect_error( ligera( X, trait[ -1 ], kinship_est ) )
     # here kinship is wrong dim
-    expect_error( ligera( X, trait, kinship[ -1, -1 ] ) )
+    expect_error( ligera( X, trait, kinship_est[ -1, -1 ] ) )
     # here kinship is not symmetric
     expect_error( ligera( X, trait, matrix(1:n^2, nrow = n) ) )
 })
 
 test_that("ligera runs on random data without missingness, matches basic version", {
     # NOTE: use <<- to remember variable globally (outside this scope)
-    expect_silent( tib1 <<- ligera( X, trait, kinship ) )
+    expect_silent( tib1 <<- ligera( X, trait, kinship_est ) )
     expect_true( is_tibble( tib1 ) )
     expect_equal( names( tib1 ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat') )
     expect_equal( nrow( tib1 ), m )
@@ -240,31 +239,83 @@ test_that("ligera runs on random data without missingness, matches basic version
     #    expect_true( all( tib1$p_q < 1 ) ) # because of inbreeding weights, there is no upper limit technically
 
     # this is the basic version (requires non-missingness, so it can only be compared here)
-    tib_basic <- ligera_basic( X, trait, kinship, kinship_inv )
+    tib_basic <- ligera_basic( X, trait, kinship_est, kinship_est_inv )
     expect_equal( tib1, tib_basic )
 })
 
-test_that("ligera_f runs on random data without missingness, matches basic version", {
+test_that("ligera_f V=0 runs on random data without missingness, matches basic version", {
+    # V==0 is most like basic version in how residuals are calculated, makes sure it'd be most stable
     # NOTE: use <<- to remember variable globally (outside this scope)
-    expect_silent( tib1 <- ligera_f( X, trait, kinship ) )
-    expect_true( is_tibble( tib1 ) )
-    expect_equal( names( tib1 ), c('pval', 'beta', 'f_stat', 'df') )
-    expect_equal( nrow( tib1 ), m )
-    expect_true( !anyNA( tib1 ) )
+    expect_silent( tib1_f <<- ligera_f( X, trait, kinship_est, V = 0 ) )
+    expect_true( is_tibble( tib1_f ) )
+    expect_equal( names( tib1_f ), c('pval', 'beta', 'f_stat', 'df') )
+    expect_equal( nrow( tib1_f ), m )
+    expect_true( !anyNA( tib1_f ) )
     # range for some things
-    expect_true( all( tib1$pval >= 0 ) )
-    expect_true( all( tib1$pval <= 1 ) )
-    expect_true( all( tib1$f_stat >= 0 ) )
-    expect_true( all( tib1$df > 0 ) )
+    expect_true( all( tib1_f$pval >= 0 ) )
+    expect_true( all( tib1_f$pval <= 1 ) )
+    expect_true( all( tib1_f$f_stat >= 0 ) )
+    expect_true( all( tib1_f$df > 0 ) )
 
     # this is the basic version (requires non-missingness, so it can only be compared here)
-    tib_basic <- ligera_f_basic( X, trait, kinship_inv )
-    expect_equal( tib1, tib_basic )
+    tib_f_basic <- ligera_f_basic( X, trait, kinship_est_inv )
+    expect_equal( tib1_f, tib_f_basic )
 })
+
+# most numerically unstable version :(
+## test_that("ligera_f V=1 runs on random data without missingness, matches V=0", {
+##     expect_silent( tib1_f1 <- ligera_f( X, trait, kinship_est, V = 1 ) )
+##     expect_equal( tib1_f1, tib1_f )
+## })
+
+test_that("ligera_f V=2 runs on random data without missingness, matches V=0", {
+    expect_silent( tib1_f2 <- ligera_f( X, trait, kinship_est, V = 2 ) )
+    expect_equal( tib1_f2, tib1_f )
+})
+
+test_that("ligera_f V=3 runs on random data without missingness, matches V=0", {
+    expect_silent( tib1_f3 <- ligera_f( X, trait, kinship_est, V = 3 ) )
+    expect_equal( tib1_f3, tib1_f )
+})
+
+# this failed to agree, singularity appears to be an issue here, or maybe other details of how the pseudoinverse is used
+## test_that("ligera with kinship_std_inv agrees with true kinship, on random data without missingness", {
+##     # first calculate biased kinship matrix
+##     library(popkinsuppl)
+##     kinship_est_std <- kinship_std_limit( kinship_est )
+##     # invert, but it is singular so use pseudoinverse
+##     library(MASS)
+##     kinship_est_std_inv <- ginv( kinship_est_std )
+##     # now use that to calculate statistics
+##     # note regular kinship is still passed to calculate inbreeding coefficients the same way as before
+##     expect_silent( tib1_std <- ligera( X, trait, kinship_est, kinship_inv = kinship_est_std_inv ) )
+##     # if theory holds with pseudoinverse, entire statistics table should be the same!
+##     expect_equal( tib1_std, tib1 )
+## })
+
+# calculate biased kinship matrix (shared by two tests)
+kinship_est_wg <- popkinsuppl::kinship_wg_limit( kinship_est )
+kinship_est_miss_wg <- popkinsuppl::kinship_wg_limit( kinship_est_miss )
+
+# failing unexpectedly, not as numerically stable as it should be?  Or variance estimate is not bias-invariant?
+## test_that("ligera with WG bias agrees with unbiased kinship, on random data without missingness", {
+##     # note inbreeding coefficients are true kinship to calculate variance the same way as before
+##     expect_silent( tib1_wg <- ligera( X, trait, kinship_est_wg, inbr = inbr( kinship_est ) ) )
+##     # if theory holds, entire statistics table should be the same!
+##     expect_equal( tib1_wg, tib1 )
+## })
+
+test_that("ligera_f with WG bias agrees with unbiased kinship, on random data without missingness", {
+    # this version pass WG only (as main matrix; the F version doesn't have inbreeding variance stuff)
+    expect_silent( tib1_f_wg <- ligera_f( X, trait, kinship_est_wg ) )
+    # if theory holds, entire statistics table should be the same!
+    expect_equal( tib1_f_wg, tib1_f )
+})
+
 
 test_that("ligera runs on random data with missingness in X", {
     # NOTE: use <<- to remember variable globally (outside this scope)
-    expect_silent( tib2 <<- ligera( X_miss, trait, kinship ) )
+    expect_silent( tib2 <<- ligera( X_miss, trait, kinship_est_miss ) )
     expect_true( is_tibble( tib2 ) )
     expect_equal( names( tib2 ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat') )
     expect_equal( nrow( tib2 ), m )
@@ -278,47 +329,81 @@ test_that("ligera runs on random data with missingness in X", {
 
 test_that("ligera_f runs on random data with missingness in X", {
     # NOTE: use <<- to remember variable globally (outside this scope)
-    expect_silent( tib2 <- ligera_f( X_miss, trait, kinship ) )
-    expect_true( is_tibble( tib2 ) )
-    expect_equal( names( tib2 ), c('pval', 'beta', 'f_stat', 'df') )
-    expect_equal( nrow( tib2 ), m )
-    expect_true( !anyNA( tib2 ) )
+    expect_silent( tib2_f <<- ligera_f( X_miss, trait, kinship_est_miss ) )
+    expect_true( is_tibble( tib2_f ) )
+    expect_equal( names( tib2_f ), c('pval', 'beta', 'f_stat', 'df') )
+    expect_equal( nrow( tib2_f ), m )
+    expect_true( !anyNA( tib2_f ) )
     # range for some things
-    expect_true( all( tib2$pval >= 0 ) )
-    expect_true( all( tib2$pval <= 1 ) )
-    expect_true( all( tib2$f_stat >= 0 ) )
-    expect_true( all( tib2$df > 0 ) )
+    expect_true( all( tib2_f$pval >= 0 ) )
+    expect_true( all( tib2_f$pval <= 1 ) )
+    expect_true( all( tib2_f$f_stat >= 0 ) )
+    expect_true( all( tib2_f$df > 0 ) )
 })
 
-test_that("ligera runs on random data with missingness in X", {
+# failing unexpectedly, not as numerically stable as it should be?  Or variance estimate is not bias-invariant?
+## test_that("ligera with WG bias agrees with unbiased kinship, on random data with missingness in X", {
+##     # note inbreeding coefficients are true kinship to calculate variance the same way as before
+##     expect_silent( tib2_wg <- ligera( X_miss, trait, kinship_est_miss_wg, inbr = inbr( kinship_est_miss ) ) )
+##     # if theory holds, entire statistics table should be the same!
+##     expect_equal( tib2_wg, tib2 )
+## })
+
+test_that("ligera_f with WG bias agrees with unbiased kinship, on random data with missingness in X", {
+    # this version pass WG only (as main matrix; the F version doesn't have inbreeding variance stuff)
+    expect_silent( tib2_f_wg <- ligera_f( X_miss, trait, kinship_est_miss_wg ) )
+    # if theory holds, entire statistics table should be the same!
+    expect_equal( tib2_f_wg, tib2_f )
+})
+
+test_that("ligera runs on random data with missingness in trait", {
     # NOTE: use <<- to remember variable globally (outside this scope)
-    expect_silent( tib2 <<- ligera( X_miss, trait, kinship ) )
-    expect_true( is_tibble( tib2 ) )
-    expect_equal( names( tib2 ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat') )
-    expect_equal( nrow( tib2 ), m )
-    expect_true( !anyNA( tib2 ) )
-    # range for some things
-    expect_true( all( tib2$pval >= 0 ) )
-    expect_true( all( tib2$pval <= 1 ) )
-    expect_true( all( tib2$beta_std_dev > 0 ) )
-    expect_true( all( tib2$p_q > 0 ) )
-})
-
-test_that("ligera_f runs on random data with missingness in trait", {
-    expect_silent( tib3 <- ligera_f( X, trait_miss, kinship ) )
+    expect_silent(
+        tib3 <<- ligera( X, trait_miss, kinship_est )
+    )
     expect_true( is_tibble( tib3 ) )
-    expect_equal( names( tib3 ), c('pval', 'beta', 'f_stat', 'df') )
+    expect_equal( names( tib3 ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat') )
     expect_equal( nrow( tib3 ), m )
     expect_true( !anyNA( tib3 ) )
     # range for some things
     expect_true( all( tib3$pval >= 0 ) )
     expect_true( all( tib3$pval <= 1 ) )
-    expect_true( all( tib3$f_stat >= 0 ) )
-    expect_true( all( tib3$df > 0 ) )
+    expect_true( all( tib3$beta_std_dev > 0 ) )
+    expect_true( all( tib3$p_q > 0 ) )
 })
 
+test_that("ligera_f runs on random data with missingness in trait", {
+    expect_silent( tib3_f <<- ligera_f( X, trait_miss, kinship_est ) )
+    expect_true( is_tibble( tib3_f ) )
+    expect_equal( names( tib3_f ), c('pval', 'beta', 'f_stat', 'df') )
+    expect_equal( nrow( tib3_f ), m )
+    expect_true( !anyNA( tib3_f ) )
+    # range for some things
+    expect_true( all( tib3_f$pval >= 0 ) )
+    expect_true( all( tib3_f$pval <= 1 ) )
+    expect_true( all( tib3_f$f_stat >= 0 ) )
+    expect_true( all( tib3_f$df > 0 ) )
+})
+
+# failing unexpectedly, not as numerically stable as it should be?  Or variance estimate is not bias-invariant?
+## test_that("ligera with WG bias agrees with unbiased kinship, on random data with missingness in trait", {
+##     # note inbreeding coefficients are true kinship to calculate variance the same way as before
+##     expect_silent( tib3_wg <- ligera( X, trait_miss, kinship_est_wg, inbr = inbr( kinship_est ) ) )
+##     # if theory holds, entire statistics table should be the same!
+##     expect_equal( tib3_wg, tib3 )
+## })
+
+test_that("ligera_f with WG bias agrees with unbiased kinship, on random data with missingness in trait", {
+    # this version pass WG only (as main matrix; the F version doesn't have inbreeding variance stuff)
+    expect_silent( tib3_f_wg <- ligera_f( X, trait_miss, kinship_est_wg ) )
+    # if theory holds, entire statistics table should be the same!
+    expect_equal( tib3_f_wg, tib3_f )
+})
+
+
+
 test_that("ligera runs on random data with missingness in X and trait", {
-    expect_silent( tib4 <- ligera( X_miss, trait_miss, kinship ) )
+    expect_silent( tib4 <<- ligera( X_miss, trait_miss, kinship_est_miss ) )
     expect_true( is_tibble( tib4 ) )
     expect_equal( names( tib4 ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat') )
     expect_equal( nrow( tib4 ), m )
@@ -331,20 +416,36 @@ test_that("ligera runs on random data with missingness in X and trait", {
 })
 
 test_that("ligera_f runs on random data with missingness in X and trait", {
-    expect_silent( tib4 <- ligera_f( X_miss, trait_miss, kinship ) )
-    expect_true( is_tibble( tib4 ) )
-    expect_equal( names( tib4 ), c('pval', 'beta', 'f_stat', 'df') )
-    expect_equal( nrow( tib4 ), m )
-    expect_true( !anyNA( tib4 ) )
+    expect_silent( tib4_f <<- ligera_f( X_miss, trait_miss, kinship_est_miss ) )
+    expect_true( is_tibble( tib4_f ) )
+    expect_equal( names( tib4_f ), c('pval', 'beta', 'f_stat', 'df') )
+    expect_equal( nrow( tib4_f ), m )
+    expect_true( !anyNA( tib4_f ) )
     # range for some things
-    expect_true( all( tib4$pval >= 0 ) )
-    expect_true( all( tib4$pval <= 1 ) )
-    expect_true( all( tib4$f_stat >= 0 ) )
-    expect_true( all( tib4$df > 0 ) )
+    expect_true( all( tib4_f$pval >= 0 ) )
+    expect_true( all( tib4_f$pval <= 1 ) )
+    expect_true( all( tib4_f$f_stat >= 0 ) )
+    expect_true( all( tib4_f$df > 0 ) )
 })
 
+# failing unexpectedly, not as numerically stable as it should be?  Or variance estimate is not bias-invariant?
+## test_that("ligera with WG bias agrees with unbiased kinship, on random data with missingness in X and trait", {
+##     # note inbreeding coefficients are true kinship to calculate variance the same way as before
+##     expect_silent( tib4_wg <- ligera( X_miss, trait_miss, kinship_est_miss_wg, inbr = inbr( kinship_est_miss ) ) )
+##     # if theory holds, entire statistics table should be the same!
+##     expect_equal( tib4_wg, tib4 )
+## })
+
+test_that("ligera_f with WG bias agrees with unbiased kinship, on random data with missingness in X and trait", {
+    # this version pass WG only (as main matrix; the F version doesn't have inbreeding variance stuff)
+    expect_silent( tib4_f_wg <- ligera_f( X_miss, trait_miss, kinship_est_miss_wg ) )
+    # if theory holds, entire statistics table should be the same!
+    expect_equal( tib4_f_wg, tib4_f )
+})
+
+
 test_that("ligera works with covariates", {
-    expect_silent( tib <- ligera( X, trait, kinship, covar = covar ) )
+    expect_silent( tib <- ligera( X, trait, kinship_est, covar = covar ) )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat') )
     expect_equal( nrow( tib ), m )
@@ -357,12 +458,12 @@ test_that("ligera works with covariates", {
     #    expect_true( all( tib$p_q < 1 ) ) # because of inbreeding weights, there is no upper limit technically
 
     # this is the basic version (requires non-missingness, so it can only be compared here)
-    tib_basic <- ligera_basic( X, trait, kinship, kinship_inv, covar = covar )
+    tib_basic <- ligera_basic( X, trait, kinship_est, kinship_est_inv, covar = covar )
     expect_equal( tib, tib_basic )
 })
 
 test_that("ligera_f works with covariates", {
-    expect_silent( tib <- ligera_f( X, trait, kinship, covar = covar ) )
+    expect_silent( tib <- ligera_f( X, trait, kinship_est, covar = covar ) )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'f_stat', 'df') )
     expect_equal( nrow( tib ), m )
@@ -374,12 +475,12 @@ test_that("ligera_f works with covariates", {
     expect_true( all( tib$df > 0 ) )
 
     # this is the basic version (requires non-missingness, so it can only be compared here)
-    tib_basic <- ligera_f_basic( X, trait, kinship_inv, covar = covar )
+    tib_basic <- ligera_f_basic( X, trait, kinship_est_inv, covar = covar )
     expect_equal( tib, tib_basic )
 })
 
 test_that("ligera works with covariates with missingness", {
-    expect_silent( tib <- ligera( X, trait, kinship, covar = covar_miss ) )
+    expect_silent( tib <- ligera( X, trait, kinship_est, covar = covar_miss ) )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat') )
     expect_equal( nrow( tib ), m )
@@ -392,12 +493,12 @@ test_that("ligera works with covariates with missingness", {
     #    expect_true( all( tib$p_q < 1 ) ) # because of inbreeding weights, there is no upper limit technically
 
     # this is the basic version (requires non-missingness, so it can only be compared here)
-    tib_basic <- ligera_basic( X, trait, kinship, kinship_inv, covar = covar_miss )
+    tib_basic <- ligera_basic( X, trait, kinship_est, kinship_est_inv, covar = covar_miss )
     expect_equal( tib, tib_basic )
 })
 
 test_that("ligera_f works with covariates with missingness", {
-    expect_silent( tib <- ligera_f( X, trait, kinship, covar = covar_miss ) )
+    expect_silent( tib <- ligera_f( X, trait, kinship_est, covar = covar_miss ) )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'f_stat', 'df') )
     expect_equal( nrow( tib ), m )
@@ -409,13 +510,13 @@ test_that("ligera_f works with covariates with missingness", {
     expect_true( all( tib$df > 0 ) )
     
     # this is the basic version (requires non-missingness, so it can only be compared here)
-    tib_basic <- ligera_f_basic( X, trait, kinship_inv, covar = covar_miss )
+    tib_basic <- ligera_f_basic( X, trait, kinship_est_inv, covar = covar_miss )
     expect_equal( tib, tib_basic )
 })
 
 test_that("ligera_multi runs without errors", {
     expect_silent(
-        tib <- ligera_multi( X, trait, kinship )
+        tib <- ligera_multi( X, trait, kinship_est )
     )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat', 'qval', 'sel') )
@@ -433,7 +534,7 @@ test_that("ligera_multi runs without errors", {
 
 test_that("ligera_f_multi runs without errors", {
     expect_silent(
-        tib <- ligera_f_multi( X, trait, kinship )
+        tib <- ligera_f_multi( X, trait, kinship_est )
     )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'f_stat', 'df', 'qval', 'sel') )
@@ -449,7 +550,7 @@ test_that("ligera_f_multi runs without errors", {
 
 test_that("ligera_multi `one_per_iter = TRUE` runs without errors", {
     expect_silent(
-        tib <- ligera_multi( X, trait, kinship, one_per_iter = TRUE )
+        tib <- ligera_multi( X, trait, kinship_est, one_per_iter = TRUE )
     )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat', 'qval', 'sel') )
@@ -467,7 +568,7 @@ test_that("ligera_multi `one_per_iter = TRUE` runs without errors", {
 
 test_that("ligera_f_multi `one_per_iter = TRUE` runs without errors", {
     expect_silent(
-        tib <- ligera_f_multi( X, trait, kinship, one_per_iter = TRUE )
+        tib <- ligera_f_multi( X, trait, kinship_est, one_per_iter = TRUE )
     )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'f_stat', 'df', 'qval', 'sel') )
@@ -483,7 +584,7 @@ test_that("ligera_f_multi `one_per_iter = TRUE` runs without errors", {
 
 test_that("ligera_multi runs with X missingness without errors", {
     expect_silent(
-        tib <- ligera_multi( X_miss, trait, kinship )
+        tib <- ligera_multi( X_miss, trait, kinship_est_miss )
     )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat', 'qval', 'sel') )
@@ -501,7 +602,7 @@ test_that("ligera_multi runs with X missingness without errors", {
 
 test_that("ligera_f_multi runs with X missingness without errors", {
     expect_silent(
-        tib <- ligera_f_multi( X_miss, trait, kinship )
+        tib <- ligera_f_multi( X_miss, trait, kinship_est_miss )
     )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'f_stat', 'df', 'qval', 'sel') )
@@ -517,7 +618,7 @@ test_that("ligera_f_multi runs with X missingness without errors", {
 
 test_that("ligera_multi runs with covariates without errors", {
     expect_silent(
-        tib <- ligera_multi( X, trait, kinship, covar = covar )
+        tib <- ligera_multi( X, trait, kinship_est, covar = covar )
     )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat', 'qval', 'sel') )
@@ -535,7 +636,7 @@ test_that("ligera_multi runs with covariates without errors", {
 
 test_that("ligera_f_multi runs with covariates without errors", {
     expect_silent(
-        tib <- ligera_f_multi( X, trait, kinship, covar = covar )
+        tib <- ligera_f_multi( X, trait, kinship_est, covar = covar )
     )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'f_stat', 'df', 'qval', 'sel') )
@@ -551,7 +652,7 @@ test_that("ligera_f_multi runs with covariates without errors", {
 
 test_that("ligera_multi runs with covariates with missingness without errors", {
     expect_silent(
-        tib <- ligera_multi( X, trait, kinship, covar = covar_miss )
+        tib <- ligera_multi( X, trait, kinship_est, covar = covar_miss )
     )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'beta_std_dev', 'p_q', 't_stat', 'qval', 'sel') )
@@ -569,7 +670,7 @@ test_that("ligera_multi runs with covariates with missingness without errors", {
 
 test_that("ligera_f_multi runs with covariates with missingness without errors", {
     expect_silent(
-        tib <- ligera_f_multi( X, trait, kinship, covar = covar_miss )
+        tib <- ligera_f_multi( X, trait, kinship_est, covar = covar_miss )
     )
     expect_true( is_tibble( tib ) )
     expect_equal( names( tib ), c('pval', 'beta', 'f_stat', 'df', 'qval', 'sel') )
@@ -993,11 +1094,11 @@ if (
     
     test_that("ligera runs correctly on BEDMatrix data, recovers R matrix outputs", {
         # this one compares to tib1
-        expect_silent( tib1_BEDMatrix <- ligera( X_BEDMatrix, trait, kinship ) )
+        expect_silent( tib1_BEDMatrix <- ligera( X_BEDMatrix, trait, kinship_est ) )
         expect_equal( tib1, tib1_BEDMatrix )
         
         # and this one compares to tib2
-        expect_silent( tib2_BEDMatrix <- ligera( X_miss_BEDMatrix, trait, kinship ) )
+        expect_silent( tib2_BEDMatrix <- ligera( X_miss_BEDMatrix, trait, kinship_est_miss ) )
         expect_equal( tib2, tib2_BEDMatrix )
     })
 

@@ -14,6 +14,7 @@ ligera_f(
   mem_factor = 0.7,
   mem_lim = NA,
   m_chunk_max = 1000,
+  V = 0,
   tol = 1e-15,
   maxIter = 1e+06
 )
@@ -41,6 +42,9 @@ Default in Linux and Windows is \code{mem_factor} times the free system memory, 
 
 \item{m_chunk_max}{Sets the maximum number of loci to process at the time.
 Actual number of loci loaded may be lower if memory is limiting.}
+
+\item{V}{Algorithm version (0, 1, 2, 3).
+Experimental features, not worth explaining except that V=1 is numerically least stable but also the fastest (for n << m).}
 
 \item{tol}{Tolerance value passed to \verb{\link[cPCG]\{cgsolve\}}.}
 

@@ -54,3 +54,16 @@
 - Unit tests: reduced simulation size (`n = 20`, from 100; left `m = 1000`)
   - Reduced its runtime to 3.4s (before it was highly variable but excessive, between 60s-131s).
   - Reduction does not appear to increase testing artifacts (such as singular matrix inversions).
+
+# ligera 1.0.9.9000 (2022-05-26)
+
+- Function `ligera` fixed bug that `inbr` wasn't subset for non-NA individuals when there is missingness in the input trait
+  - Only occurred if `inbr` was explicitly provided, otherwise lazy evaluation from kinship (which was subset) ensured that it was subset when it was not provided as explicit parameter.
+  - Other versions (`ligera2`, `ligera2_bed`, `ligera_f`) do not have the option of providing `inbr` so were not affected by similar bugs.
+- Function `ligera_f` 
+  - Added option `V` to specify algorithm (there are four versions, numbered 0-3, roughly falling into two scalability classes).  This is a temporary option that will be removed if one version emerges as clearly superior.
+  - Default algorithm changed to what is now `V=0` (default was `V=1` before, but internal tests show that it has the lowest numerical stability of all the choices, below machine precision).  Previously all versions were commented out except `V=1`.
+- Unit tests
+  - Replaced trivial true kinship of unstructured simulations (`I/2`) with popkin estimates in all tests.  This was necessary so WG-biased estimates would differ from their unbiased counterparts, and helped identify the numeric stability issues of the previous `ligera_f` version.
+  - Added tests that confirm that `ligera_f` is invariant to WG bias (a type of bias that always results in non-singular kinship matrices).
+    - Oddly, `ligera` is not invariant to WG, and it is unclear at the moment why.

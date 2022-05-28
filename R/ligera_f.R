@@ -21,6 +21,8 @@
 #' Default in Linux and Windows is `mem_factor` times the free system memory, otherwise it is 1GB (OSX and other systems).
 #' @param m_chunk_max Sets the maximum number of loci to process at the time.
 #' Actual number of loci loaded may be lower if memory is limiting.
+#' @param V Algorithm version (0, 1, 2, 3).
+#' Experimental features, not worth explaining except that V=1 is numerically least stable but also the fastest (for n << m).
 #' @param tol Tolerance value passed to `\link[cPCG]{cgsolve}`.
 #' @param maxIter Maximum number of iterations passed to `\link[cPCG]{cgsolve}`.
 #'
@@ -61,6 +63,7 @@ ligera_f <- function(
                      mem_factor = 0.7,
                      mem_lim = NA,
                      m_chunk_max = 1000,
+                     V = 0,
                      # cgsolve options
                      tol = 1e-15, # default 1e-6
                      maxIter = 1e6 # default 1e3
@@ -160,31 +163,30 @@ ligera_f <- function(
     H1 <- Z1 %*% solve( crossprod( Y1, Z1 ) )
     H0 <- Z0 %*% solve( crossprod( Y0, Z0 ) )
 
-    ## OLD
-    # another recurrent product for getting residuals/stats
-    # dimensions n x n
-    R1 <- tcrossprod( Y1, H1 ) - diag( n_ind )
-    R0 <- tcrossprod( Y0, H0 ) - diag( n_ind )
-    # O(n^2*k)
+    if ( V == 1 ) {
+        # another recurrent product for getting residuals/stats
+        # dimensions n x n
+        R1 <- tcrossprod( Y1, H1 ) - diag( n_ind )
+        R0 <- tcrossprod( Y0, H0 ) - diag( n_ind )
+        # O(n^2*k)
 
-    ## OLD
-    # last thing is matrix that returns sums of residuals quickly
-    # dimensions n x n
-    # NOTE: here conjugate gradient probably isn't very efficient, as products are as big as explicit inverse :(  Better luck computing residuals more directly from genotypes!
-    if ( is.null( kinship_inv ) ) {
-        R1 <- crossprod( R1, cgsolve_mat( kinship, R1, tol = tol, maxIter = maxIter ) )
-        R0 <- crossprod( R0, cgsolve_mat( kinship, R0, tol = tol, maxIter = maxIter ) )
-    } else {
-        # use kinship inverse if given
-        R1 <- crossprod( R1, kinship_inv %*% R1 )
-        R0 <- crossprod( R0, kinship_inv %*% R0 )
+        # last thing is matrix that returns sums of residuals quickly
+        # dimensions n x n
+        # NOTE: here conjugate gradient probably isn't very efficient, as products are as big as explicit inverse :(  Better luck computing residuals more directly from genotypes!
+        if ( is.null( kinship_inv ) ) {
+            R1 <- crossprod( R1, cgsolve_mat( kinship, R1, tol = tol, maxIter = maxIter ) )
+            R0 <- crossprod( R0, cgsolve_mat( kinship, R0, tol = tol, maxIter = maxIter ) )
+        } else {
+            # use kinship inverse if given
+            R1 <- crossprod( R1, kinship_inv %*% R1 )
+            R0 <- crossprod( R0, kinship_inv %*% R0 )
+        }
+        # O(n^3.5 + n^3)
+    } else if ( V == 3 ) {
+        HZ1 <- tcrossprod( H1, Z1 )
+        HZ0 <- tcrossprod( H0, Z0 )
+        # O( n^2*k )
     }
-    # O(n^3.5 + n^3)
-
-    ## ## NEW3
-    ## HZ1 <- tcrossprod( H1, Z1 )
-    ## HZ0 <- tcrossprod( H0, Z0 )
-    ## # O( n^2*k )
     
     ##############################
     ### COEFFICIENT ESTIMATION ###
@@ -270,79 +272,84 @@ ligera_f <- function(
         # projection for trait coefficient H1[,1] only
         beta[ indexes_loci_chunk ] <- drop( Xi %*% H1[ , 1 ] ) * n_ind / n_ind_no_NA
 
-        ## ## NEW3
-        ## ssr1 <- rowSums( ( Xi %*% HZ1 ) * Xi )
-        ## ssr0 <- rowSums( ( Xi %*% HZ0 ) * Xi )
-        ## # O( m*n^2 )
+        if ( V == 0 ) {
+            # rest are for getting residuals
+            # NOTE: here missing values are just not part of sums, so setting them to zero is perfectly fine
+            # alt model first
+            R <- Xi - tcrossprod( Xi %*% H1, Y1 )
+            # O( m*n*k )
+            # then sums of residuals weighted by inverse kinship
+            if ( is.null( kinship_inv ) ) {
+                ssr1 <- rowSums( cgsolve_mat( kinship, R, transpose = TRUE, tol = tol, maxIter = maxIter ) * R )
+                # O( n^2.5*m + n^2*m )
+            } else {
+                # use kinship inverse if given
+                ssr1 <- rowSums( ( R %*% kinship_inv ) * R )
+            }
+            # repeat for null model now
+            R <- Xi - tcrossprod( Xi %*% H0, Y0 )
+            if ( is.null( kinship_inv ) ) {
+                ssr0 <- rowSums( cgsolve_mat( kinship, R, transpose = TRUE, tol = tol, maxIter = maxIter ) * R )
+            } else {
+                # use kinship inverse if given
+                ssr0 <- rowSums( ( R %*% kinship_inv ) * R )
+            }
+        } else if ( V == 1 ) {
+            # Xi %*% t(RX) are dims m_chunk x n
+            # NOTE: here missing values are just not part of sums, so setting them to zero is perfectly fine
+            ssr1 <- rowSums( tcrossprod( Xi, R1 ) * Xi )
+            ssr0 <- rowSums( tcrossprod( Xi, R0 ) * Xi )
+            # O(m*n^2)
+        } else if ( V == 2 ) {
+            ssr1 <- rowSums( ( Xi %*% H1 ) * ( Xi %*% Z1 ) )
+            ssr0 <- rowSums( ( Xi %*% H0 ) * ( Xi %*% Z0 ) )
+            # O( m*n*k + m*k^2 )
+        } else if ( V == 3 ) {
+            ssr1 <- rowSums( ( Xi %*% HZ1 ) * Xi )
+            ssr0 <- rowSums( ( Xi %*% HZ0 ) * Xi )
+            # O( m*n^2 )
+        }
 
-        ## ## NEW2
-        ## ssr1 <- rowSums( ( Xi %*% H1 ) * ( Xi %*% Z1 ) )
-        ## ssr0 <- rowSums( ( Xi %*% H0 ) * ( Xi %*% Z0 ) )
-        ## # O( m*n*k + m*k^2 )
-        ## # shared by NEW2 and NEW3
-        ## # then sums of residuals weighted by inverse kinship
-        ## if ( is.null( kinship_inv ) ) {
-        ##     ssrx <- rowSums( cgsolve_mat( kinship, Xi, transpose = TRUE, tol = tol, maxIter = maxIter ) * Xi )
-        ##     # O( n^2.5*m + n^2*m )
-        ## } else {
-        ##     # use kinship inverse if given
-        ##     ssrx <- rowSums( ( Xi %*% kinship_inv ) * Xi )
-        ## }
-
-        ## ## NEW
-        ## # rest are for getting residuals
-        ## # NOTE: here missing values are just not part of sums, so setting them to zero is perfectly fine
-        ## # alt model first
-        ## R <- Xi - tcrossprod( Xi %*% H1, Y1 )
-        ## # O( m*n*k )
-        ## # then sums of residuals weighted by inverse kinship
-        ## if ( is.null( kinship_inv ) ) {
-        ##     ssr1 <- rowSums( cgsolve_mat( kinship, R, transpose = TRUE, tol = tol, maxIter = maxIter ) * R )
-        ##     # O( n^2.5*m + n^2*m )
-        ## } else {
-        ##     # use kinship inverse if given
-        ##     ssr1 <- rowSums( ( R %*% kinship_inv ) * R )
-        ## }
-        ## # repeat for null model now
-        ## R <- Xi - tcrossprod( Xi %*% H0, Y0 )
-        ## if ( is.null( kinship_inv ) ) {
-        ##     ssr0 <- rowSums( cgsolve_mat( kinship, R, transpose = TRUE, tol = tol, maxIter = maxIter ) * R )
-        ## } else {
-        ##     # use kinship inverse if given
-        ##     ssr0 <- rowSums( ( R %*% kinship_inv ) * R )
-        ## }
-
-        ## OLD
-        # Xi %*% t(RX) are dims m_chunk x n
-        # NOTE: here missing values are just not part of sums, so setting them to zero is perfectly fine
-        ssr1 <- rowSums( tcrossprod( Xi, R1 ) * Xi )
-        ssr0 <- rowSums( tcrossprod( Xi, R0 ) * Xi )
-        # O(m*n^2)
-        
+        if ( V == 2 || V == 3 ) {
+            # then sums of residuals weighted by inverse kinship
+            if ( is.null( kinship_inv ) ) {
+                ssrx <- rowSums( cgsolve_mat( kinship, Xi, transpose = TRUE, tol = tol, maxIter = maxIter ) * Xi )
+                # O( n^2.5*m + n^2*m )
+            } else {
+                # use kinship inverse if given
+                ssrx <- rowSums( ( Xi %*% kinship_inv ) * Xi )
+            }
+        }
+    
         # calculate F statistic now that all the parts are in place!
         # here NAs are accounted for in formula (to be normalized in the end!
-        f_stat[ indexes_loci_chunk ] <- (ssr0 - ssr1) / ssr1 # OLD/NEW
-        #f_stat[ indexes_loci_chunk ] <- (ssr1 - ssr0) / (ssrx - ssr1) # NEW2/3
+        if ( V == 0 || V == 1 ) {
+            f_stat[ indexes_loci_chunk ] <- (ssr0 - ssr1) / ssr1
+        } else if ( V == 2 || V == 3 ) {
+            f_stat[ indexes_loci_chunk ] <- (ssr1 - ssr0) / (ssrx - ssr1)
+        }
         df[ indexes_loci_chunk ] <- n_ind_no_NA - ncol( Y1 )
         
         # update starting point for next chunk! (overshoots at the end, that's ok)
         i_chunk <- i_chunk + m_chunk
     }
-    # OLD:
-    # O(n^2*k + n^3.5 + n^3 + m*n^2)
+    # all big-Os simplified assuming small k (detailed is unsimplified)
     #
-    # NEW:
-    # O( m*n*k + n^2.5*m + n^2*m )
+    # V=0: O( m*n^2.5 )
+    # detailed: O( m*n*k + n^2.5*m + n^2*m )
     # does appear worse by trading some n's by m's
     #
-    # NEW2:
-    # O( m*n*k + m*k^2 + n^2.5*m + n^2*m )
-    # practically the same as NEW, if not a tad worse :(
+    # V=1: O( n^3.5 + m*n^2 )
+    # detailed: O( n^2*k + n^3.5 + n^3 + m*n^2 )
     #
-    # NEW3:
-    # O( n^2*k + m*n^2 + n^2.5*m )
-    # still worse than OLD but only trades on n by m
-    # better than NEW2 trading on m by n
+    # V=2: O( m*n^2.5 )
+    # detailed: O( m*n*k + m*k^2 + n^2.5*m + n^2*m )
+    # practically the same as V=0, if not a tad worse :(
+    #
+    # V=3: O( m*n^2.5 )
+    # detailed: O( n^2*k + m*n^2 + n^2.5*m )
+    # still worse than V=1 but only trades one n by m
+    # better than V=2 trading one m by n
     
     ################
     ### P-VALUES ###

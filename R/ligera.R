@@ -130,6 +130,11 @@ ligera <- function(
         trait <- trait[ indexes_ind ]
         # subset kinship matrix
         kinship <- kinship[ indexes_ind, indexes_ind ]
+        # inbreeding vector too!
+        # turns out if it's missing, it's calculated lazily from kinship so it will already be subset
+        # but if it's provided, then it must be subset!
+        if ( !missing( inbr ) )
+            inbr <- inbr[ indexes_ind ]
         # force recomputing inverse of kinship matrix (see further below)
         kinship_inv <- NULL
         # subset covariates, if present
