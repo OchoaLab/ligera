@@ -14,20 +14,21 @@
 conj_grad_scan <- function(
                            X,
                            Y,
-                           mean_kinship,
+                           mean_kinship = NA, # required if b is NA, ignored otherwise
                            indexes_ind = NULL,
                            tol = 1e-15,
                            n_data_cut = 1e6, # block size limit for BEDMatrix
                            loci_on_cols = FALSE,
-                           verbose = FALSE
+                           verbose = FALSE,
+                           want_inbr = TRUE, # so old code works
+                           want_b = FALSE,
+                           b = NA
                            ) {
     # validations
     if ( missing( X ) )
         stop( '`X` genotype matrix is required!' )
     if ( missing( Y ) )
         stop( '`Y` covariates matrix is required!' )
-    if ( missing( mean_kinship ) )
-        stop( '`mean_kinship` is required!' )
 
     # validate X and Y
     if ( !is.matrix(X) ) # TRUE for BEDMatrix
@@ -38,11 +39,16 @@ conj_grad_scan <- function(
     if ( 'BEDMatrix' %in% class( X ) )
         loci_on_cols <- TRUE
 
-    # validate mean_kinship, must be numeric scalar
-    if ( !is.numeric( mean_kinship ) )
-        stop( '`mean_kinship` must be numeric!' )
-    if ( length( mean_kinship ) != 1 )
-        stop( '`mean_kinship` must be scalar!  Got length "', length( mean_kinship ), '"' )
+    if ( is.na( b ) ) {
+        # validate mean_kinship, must be numeric scalar
+        if ( !is.numeric( mean_kinship ) )
+            stop( '`mean_kinship` must be numeric!' )
+        if ( length( mean_kinship ) != 1 )
+            stop( '`mean_kinship` must be scalar!  Got length "', length( mean_kinship ), '"' )
+        # (do after checking that it's scalar)
+        if ( is.na( mean_kinship ) )
+            stop( 'Either `mean_kinship` or `b` must be non-NA!' )
+    }
 
     # get dimensions from Y
     n_ind <- nrow( Y )
@@ -72,9 +78,9 @@ conj_grad_scan <- function(
     not_converged <- rep.int( TRUE, k_covars )
 
     # things that get computed by popkin_prod first time
-    b <- NA # tells popkin_prod that we need it!
-    inbr <- NULL
-
+    if ( want_inbr )
+        inbr <- NULL
+    
     if ( verbose )
         iter <- 0
     
@@ -97,14 +103,16 @@ conj_grad_scan <- function(
             b = b,
             indexes_ind = indexes_ind,
             n_data_cut = n_data_cut, # block size limit for BEDMatrix
-            loci_on_cols = loci_on_cols
+            loci_on_cols = loci_on_cols,
+            want_inbr = want_inbr
         )
         # always want KP
         KP <- obj$KP
         if ( is.na( b ) ) {
             # here we replace b and inbr with the value form the function
             b <- obj$b
-            inbr <- obj$inbr
+            if ( want_inbr )
+                inbr <- obj$inbr
         }
         
         # now continue to update variables in the CG iterations, vectorized if possible
@@ -154,10 +162,20 @@ conj_grad_scan <- function(
     }
     
     # after everything has converged, return the matrix of interest!
-    return(
-        list(
-            Z = Z_final,
-            inbr = inbr
+    if ( want_inbr )
+        return(
+            list(
+                Z = Z_final,
+                inbr = inbr
+            )
         )
-    )
+    if ( want_b )
+        return(
+            list(
+                Z = Z_final,
+                b = b
+            )
+        )
+    # else
+    return( Z_final )
 }

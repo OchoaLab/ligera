@@ -1,3 +1,8 @@
+# calculates KP, and optionally b and inbr.
+# KP uses b, so it must always be calculated (it is either calculated the first time or provided from an earlier iteration).
+# inbr is not used except externally, and only an older version uses it, so we can skip that here.
+# 
+# @return If b = NA, a list with: KP, b, and optionally inbr.  Otherwise a list with KP only.
 popkin_prod <- function (
                          X,
                          P,
@@ -5,7 +10,8 @@ popkin_prod <- function (
                          b = NA,
                          indexes_ind = NULL,
                          n_data_cut = 1e6, # block size limit for BEDMatrix
-                         loci_on_cols = FALSE
+                         loci_on_cols = FALSE,
+                         want_inbr = TRUE # so old code works
                          ) {
     # validations
     if ( missing( X ) )
@@ -72,9 +78,11 @@ popkin_prod <- function (
         # b = ( 1 - 4 * mean( maf * (1 - maf) ) - mean_kinship ) / ( 1 - mean_kinship )
         # have to calculate it in first pass of genotypes scan, as a running sum
         b <- 0
-        # also need to estimate the inbreeding coefficient vector!
-        inbr <- vector( 'numeric', n_ind )
-        inbr_m <- vector( 'numeric', n_ind ) # normalization (number of non-NA loci per individual)
+        if ( want_inbr ) {
+            # also need to estimate the inbreeding coefficient vector!
+            inbr <- vector( 'numeric', n_ind )
+            inbr_m <- vector( 'numeric', n_ind ) # normalization (number of non-NA loci per individual)
+        }
     }
     
     # figure out how many loci to read at the time
@@ -123,7 +131,7 @@ popkin_prod <- function (
         # "center" with -1
         X_chunk <- X_chunk - 1
 
-        if ( want_b ) {
+        if ( want_b && want_inbr ) {
             # do inbreeding coefficients now
             # here NAs can be handled correctly in reasonable memory
             inbr_m <- inbr_m + rowSums( !is.na( X_chunk ) )
@@ -154,10 +162,12 @@ popkin_prod <- function (
         # previous b was just sum(maf*(1-maf)), turn into average and incorporate into full equation
         b <- ( 1 - b / m_loci - mean_kinship ) / ( 1 - mean_kinship )
 
-        # same with the inbreeding estimates, which need the previous b
-        # note there's a conversion from self-kinship to inbreeding (2x-1)
-        ## inbr <- 2 * ( inbr / inbr_m - b ) / ( 1 - b ) - 1
-        inbr <- ( 2 * inbr / inbr_m - 1 - b ) / ( 1 - b )
+        if ( want_inbr ) {
+            # same with the inbreeding estimates, which need the previous b
+            # note there's a conversion from self-kinship to inbreeding (2x-1)
+            ## inbr <- 2 * ( inbr / inbr_m - b ) / ( 1 - b ) - 1
+            inbr <- ( 2 * inbr / inbr_m - 1 - b ) / ( 1 - b )
+        }
     }
     
     # complete final step in KP calculation
@@ -180,7 +190,8 @@ popkin_prod <- function (
     # these are optional, add only if we made them at all
     if ( want_b ) {
         obj$b <- b
-        obj$inbr <- inbr
+        if ( want_inbr )
+            obj$inbr <- inbr
     }
     return( obj )
 }
