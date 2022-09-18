@@ -21,8 +21,8 @@
 #' Default in Linux and Windows is `mem_factor` times the free system memory, otherwise it is 1GB (OSX and other systems).
 #' @param m_chunk_max Sets the maximum number of loci to process at the time.
 #' Actual number of loci loaded may be lower if memory is limiting.
-#' @param V Algorithm version (0, 1, 2, 3).
-#' Experimental features, not worth explaining except that V=1 is numerically least stable but also the fastest (for n << m).
+#' @param V Algorithm version (0, 1, 2).
+#' Experimental features, not worth explaining.
 #' @param tol Tolerance value passed to `\link[cPCG]{cgsolve}`.
 #' @param maxIter Maximum number of iterations passed to `\link[cPCG]{cgsolve}`.
 #'
@@ -163,26 +163,7 @@ ligera_f <- function(
     H1 <- Z1 %*% solve( crossprod( Y1, Z1 ) )
     H0 <- Z0 %*% solve( crossprod( Y0, Z0 ) )
 
-    if ( V == 1 ) {
-        # another recurrent product for getting residuals/stats
-        # dimensions n x n
-        R1 <- tcrossprod( Y1, H1 ) - diag( n_ind )
-        R0 <- tcrossprod( Y0, H0 ) - diag( n_ind )
-        # O(n^2*k)
-
-        # last thing is matrix that returns sums of residuals quickly
-        # dimensions n x n
-        # NOTE: here conjugate gradient probably isn't very efficient, as products are as big as explicit inverse :(  Better luck computing residuals more directly from genotypes!
-        if ( is.null( kinship_inv ) ) {
-            R1 <- crossprod( R1, cgsolve_mat( kinship, R1, tol = tol, maxIter = maxIter ) )
-            R0 <- crossprod( R0, cgsolve_mat( kinship, R0, tol = tol, maxIter = maxIter ) )
-        } else {
-            # use kinship inverse if given
-            R1 <- crossprod( R1, kinship_inv %*% R1 )
-            R0 <- crossprod( R0, kinship_inv %*% R0 )
-        }
-        # O(n^3.5 + n^3)
-    } else if ( V == 3 ) {
+    if ( V == 2 ) {
         HZ1 <- tcrossprod( H1, Z1 )
         HZ0 <- tcrossprod( H0, Z0 )
         # O( n^2*k )
@@ -295,22 +276,16 @@ ligera_f <- function(
                 ssr0 <- rowSums( ( R %*% kinship_inv ) * R )
             }
         } else if ( V == 1 ) {
-            # Xi %*% t(RX) are dims m_chunk x n
-            # NOTE: here missing values are just not part of sums, so setting them to zero is perfectly fine
-            ssr1 <- rowSums( tcrossprod( Xi, R1 ) * Xi )
-            ssr0 <- rowSums( tcrossprod( Xi, R0 ) * Xi )
-            # O(m*n^2)
-        } else if ( V == 2 ) {
             ssr1 <- rowSums( ( Xi %*% H1 ) * ( Xi %*% Z1 ) )
             ssr0 <- rowSums( ( Xi %*% H0 ) * ( Xi %*% Z0 ) )
             # O( m*n*k + m*k^2 )
-        } else if ( V == 3 ) {
+        } else if ( V == 2 ) {
             ssr1 <- rowSums( ( Xi %*% HZ1 ) * Xi )
             ssr0 <- rowSums( ( Xi %*% HZ0 ) * Xi )
             # O( m*n^2 )
         }
 
-        if ( V == 2 || V == 3 ) {
+        if ( V == 1 || V == 2 ) {
             # then sums of residuals weighted by inverse kinship
             if ( is.null( kinship_inv ) ) {
                 ssrx <- rowSums( cgsolve_mat( kinship, Xi, transpose = TRUE, tol = tol, maxIter = maxIter ) * Xi )
@@ -323,9 +298,9 @@ ligera_f <- function(
     
         # calculate F statistic now that all the parts are in place!
         # here NAs are accounted for in formula (to be normalized in the end!
-        if ( V == 0 || V == 1 ) {
+        if ( V == 0 ) {
             f_stat[ indexes_loci_chunk ] <- (ssr0 - ssr1) / ssr1
-        } else if ( V == 2 || V == 3 ) {
+        } else if ( V == 1 || V == 2 ) {
             f_stat[ indexes_loci_chunk ] <- (ssr1 - ssr0) / (ssrx - ssr1)
         }
         df[ indexes_loci_chunk ] <- n_ind_no_NA - ncol( Y1 )
@@ -339,17 +314,13 @@ ligera_f <- function(
     # detailed: O( m*n*k + n^2.5*m + n^2*m )
     # does appear worse by trading some n's by m's
     #
-    # V=1: O( n^3.5 + m*n^2 )
-    # detailed: O( n^2*k + n^3.5 + n^3 + m*n^2 )
-    #
-    # V=2: O( m*n^2.5 )
+    # V=1: O( m*n^2.5 )
     # detailed: O( m*n*k + m*k^2 + n^2.5*m + n^2*m )
     # practically the same as V=0, if not a tad worse :(
     #
-    # V=3: O( m*n^2.5 )
+    # V=2: O( m*n^2.5 )
     # detailed: O( n^2*k + m*n^2 + n^2.5*m )
-    # still worse than V=1 but only trades one n by m
-    # better than V=2 trading one m by n
+    # better than V=1 trading one m by n
     
     ################
     ### P-VALUES ###

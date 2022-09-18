@@ -76,3 +76,7 @@
   - `popkin_prod` added option `want_inbr` (to skip calculation of `inbr`, as it is unused in f versions; default is to calculate and return it as before).
   - `conj_grad_scan` added options `want_inbr` (to skip calculation of `inbr`), `want_b` (to return `b`, default does not as before), and `b` (allows for providing `b` as calculated in a previous run).  Additionally `mean_kinship` is now `NA` by default and it does not have to be provided if `b` is provided.  Lastly, if `want_inbr` and `want_b` are both false, then only `Z` is returned (instead of a list with these objects and `Z`).
 - Corrected minor errors in non-f unit tests (the wrong functions or objects were being tested, though the changes were inconsequential).
+
+# ligera 1.0.11.9000 (2022-09-18)
+
+- Functions `ligera_f`, `ligera2_f`: removed previous `V=1` algorithm, which was numerically unstable.  Shifted down previous versions `2:3` to `1:2`.

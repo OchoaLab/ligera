@@ -262,20 +262,14 @@ test_that("ligera_f V=0 runs on random data without missingness, matches basic v
     expect_equal( tib1_f, tib_f_basic )
 })
 
-# most numerically unstable version :(
-## test_that("ligera_f V=1 runs on random data without missingness, matches V=0", {
-##     expect_silent( tib1_f1 <- ligera_f( X, trait, kinship_est, V = 1 ) )
-##     expect_equal( tib1_f1, tib1_f )
-## })
+test_that("ligera_f V=1 runs on random data without missingness, matches V=0", {
+    expect_silent( tib1_f1 <- ligera_f( X, trait, kinship_est, V = 1 ) )
+    expect_equal( tib1_f1, tib1_f )
+})
 
 test_that("ligera_f V=2 runs on random data without missingness, matches V=0", {
     expect_silent( tib1_f2 <- ligera_f( X, trait, kinship_est, V = 2 ) )
     expect_equal( tib1_f2, tib1_f )
-})
-
-test_that("ligera_f V=3 runs on random data without missingness, matches V=0", {
-    expect_silent( tib1_f3 <- ligera_f( X, trait, kinship_est, V = 3 ) )
-    expect_equal( tib1_f3, tib1_f )
 })
 
 # this failed to agree, singularity appears to be an issue here, or maybe other details of how the pseudoinverse is used
@@ -904,20 +898,14 @@ test_that("ligera2_f V=0 runs on random data without missingness, matches basic 
     expect_equal( tib5_f, tib5_f_basic )
 })
 
-# most numerically unstable version :(
-## test_that("ligera2_f V=1 runs on random data without missingness, matches V=0", {
-##     expect_silent( tib5_f1 <- ligera2_f( X, trait, mean_kinship, V = 1 ) )
-##     expect_equal( tib5_f1, tib5_f )
-## })
+test_that("ligera2_f V=1 runs on random data without missingness, matches V=0", {
+    expect_silent( tib5_f1 <- ligera2_f( X, trait, mean_kinship, V = 1 ) )
+    expect_equal( tib5_f1, tib5_f )
+})
 
 test_that("ligera2_f V=2 runs on random data without missingness, matches V=0", {
     expect_silent( tib5_f2 <- ligera2_f( X, trait, mean_kinship, V = 2 ) )
     expect_equal( tib5_f2, tib5_f )
-})
-
-test_that("ligera2_f V=3 runs on random data without missingness, matches V=0", {
-    expect_silent( tib5_f3 <- ligera2_f( X, trait, mean_kinship, V = 3 ) )
-    expect_equal( tib5_f3, tib5_f )
 })
 
 test_that("ligera2 runs on random data with missingness in X", {
