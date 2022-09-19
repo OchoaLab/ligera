@@ -66,6 +66,21 @@ conj_grad_scan <- function(
     # Z_final stores converged columns only (unconverged are zeroes until they converge)
     Z_final <- Z
     
+    # different covariate columns may converge at different times, let's keep track of that
+    # NOTE: some inputs are columns of zeroes, those are already solved (multiplication by solve(kinship) keeps them at zero), this will recognize them:
+    not_converged <- rep.int( TRUE, k_covars )
+    new_converged <- colSums( Y^2 ) < tol
+    if ( any( new_converged ) ) {
+        # NOTE Z_final is already zeroes, as desired, nothing to change there
+        # subset Z so unconverged columns are left only
+        # matrices shouldn't drop to vectors (or matrix products die)
+        Z <- Z[ , !new_converged, drop = FALSE ]
+        # update because it initializes other things
+        Y <- Y[ , !new_converged, drop = FALSE ]
+        # update not_converged indicators
+        not_converged[ new_converged ] <- FALSE
+    }
+    
     # other internal matrices, which get updated as we go (columns drop as we converge)
     # residuals, initial values, updating as we progress
     # R <- Y - kinship %*% Z
@@ -74,8 +89,6 @@ conj_grad_scan <- function(
     P <- R
     # residual norms
     Rn <- colSums( R^2 )
-    # different covariate columns may converge at different times, let's keep track of that
-    not_converged <- rep.int( TRUE, k_covars )
 
     # things that get computed by popkin_prod first time
     if ( want_inbr )
@@ -119,6 +132,11 @@ conj_grad_scan <- function(
         
         # another vector of the same length
         alpha <- Rn / colSums(P * KP)
+        ## # NOTE: denominator can have zeroes!!!
+        ## # since this is a random algorithm, what if we just replace the Infs with big numbers?
+        ## indexes <- is.na( alpha )
+        ## if ( any( indexes ) ) 
+        ##     alpha[ indexes ] <- sign( Rn[ indexes ] ) * max( alpha, na.rm = TRUE )
         # multiply matrices by alpha along rows (instead of columns, which is R default)
         alpha_mat <- matrix(
             alpha,

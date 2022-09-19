@@ -908,6 +908,44 @@ test_that("ligera2_f V=2 runs on random data without missingness, matches V=0", 
     expect_equal( tib5_f2, tib5_f )
 })
 
+# weirdly cases that should be NaN are sometimes random numbers (including negative f_stats, or Inf, etc) with different versions, not worth debugging at this point to ensure compatibility in this edge case
+## test_that("ligera2_f works on weird case, matches ligera_f", {
+##     # this is an odd example I just came up with for multiscan, which reliably makes ligera2_f fail!
+##     # OK, problem is constant loci (includes fixed but also all-hetz case), which are not being removed in example!  New code catches that and handles correctly!
+##     n_ind <- 5
+##     m_loci <- 100
+##     X <- matrix(
+##         rbinom( m_loci * n_ind, 2, 0.5 ),
+##         nrow = m_loci
+##     )
+##     # introduce fixed locus on purpose to cause problem reliably
+##     X[1, ] <- 1
+##     # random trait
+##     trait <- rnorm( n_ind )
+##     ## # add a genetic effect from first locus
+##     ## trait <- trait + X[ 1, ]
+##     # a required parameter
+##     mean_kinship <- mean( diag( n_ind ) / 2 ) # unstructured case
+    
+##     tib2 <- ligera2_f( X, trait, mean_kinship )
+##     #if ( anyNA( tib2 ) )
+##     indexes <- is.na( tib2$pval )
+    
+##     # additional work to get this other version to work
+##     x_bar <- rowMeans( X )
+##     b <- (1 - mean( x_bar * ( 2 - x_bar ) ) - mean_kinship ) / ( 1 - mean_kinship )
+##     kinship_est <- ( crossprod( X - 1 ) / m_loci - b ) / ( 1 - b ) # here we do normalize properly for a plot
+##     #tib1 <- ligera_f_basic( X, trait, solve( kinship_est ) )
+##     tib1 <- ligera_f( X, trait, kinship_est )
+##     ## if ( anyNA( tib1 ) )
+##     ##     print('tib1 has NAs!')
+##     ##if ( any( indexes ) ) {
+##     print( tib2[ indexes, ] )
+##     print( tib1[ indexes, ] )
+##     ##}
+##     expect_equal( tib2, tib1 )
+## })
+
 test_that("ligera2 runs on random data with missingness in X", {
     # NOTE: use <<- to remember variable globally (outside this scope)
     expect_silent(
@@ -1149,6 +1187,33 @@ test_that("ligera2_multi runs without errors, matches ligera_multi", {
     expect_equal( tib_multi, tib_multi_basic )
 })
 
+test_that("ligera2_f_multi runs without errors, matches ligera_f_multi", {
+    # NOTE: use <<- to remember variable globally (outside this scope)
+    expect_silent(
+        tib_multi_f <<- ligera2_f_multi(
+            X = X,
+            trait = trait,
+            mean_kinship = mean_kinship
+        )
+    )
+    expect_true( is_tibble( tib_multi_f ) )
+    expect_equal( names( tib_multi_f ), c('pval', 'beta', 'f_stat', 'df', 'qval', 'sel') )
+    expect_equal( nrow( tib_multi_f ), m )
+    expect_true( !anyNA( tib_multi_f ) )
+    # range for some things
+    expect_true( all( tib_multi_f$pval >= 0 ) )
+    expect_true( all( tib_multi_f$pval <= 1 ) )
+    expect_true( all( tib_multi_f$qval >= 0 ) )
+    expect_true( all( tib_multi_f$qval <= 1 ) )
+    expect_true( all( tib_multi_f$f_stat >= 0 ) )
+    expect_true( all( tib_multi_f$df > 0 ) )
+    expect_true( all( tib_multi_f$sel >= 0 ) )
+    
+    # compare to earlier ligera with exact same kinship matrix for comparison
+    tib_multi_f_basic <- ligera_f_multi( X, trait, kinship_est )
+    expect_equal( tib_multi_f, tib_multi_f_basic )
+})
+
 test_that("ligera2_multi `one_per_iter = TRUE` runs without errors, matches ligera_multi", {
     # NOTE: use <<- to remember variable globally (outside this scope)
     expect_silent(
@@ -1175,6 +1240,34 @@ test_that("ligera2_multi `one_per_iter = TRUE` runs without errors, matches lige
     # compare to earlier ligera with exact same kinship matrix for comparison
     tib_multi_opi_basic <- ligera_multi( X, trait, kinship_est, one_per_iter = TRUE )
     expect_equal( tib_multi_opi, tib_multi_opi_basic )
+})
+
+test_that("ligera2_f_multi `one_per_iter = TRUE` runs without errors, matches ligera_f_multi", {
+    # NOTE: use <<- to remember variable globally (outside this scope)
+    expect_silent(
+        tib_multi_f_opi <<- ligera2_f_multi(
+            X = X,
+            trait = trait,
+            mean_kinship = mean_kinship,
+            one_per_iter = TRUE
+        )
+    )
+    expect_true( is_tibble( tib_multi_f ) )
+    expect_equal( names( tib_multi_f ), c('pval', 'beta', 'f_stat', 'df', 'qval', 'sel') )
+    expect_equal( nrow( tib_multi_f ), m )
+    expect_true( !anyNA( tib_multi_f ) )
+    # range for some things
+    expect_true( all( tib_multi_f$pval >= 0 ) )
+    expect_true( all( tib_multi_f$pval <= 1 ) )
+    expect_true( all( tib_multi_f$qval >= 0 ) )
+    expect_true( all( tib_multi_f$qval <= 1 ) )
+    expect_true( all( tib_multi_f$f_stat >= 0 ) )
+    expect_true( all( tib_multi_f$df > 0 ) )
+    expect_true( all( tib_multi_f$sel >= 0 ) )
+
+    # compare to earlier ligera with exact same kinship matrix for comparison
+    tib_multi_f_opi_basic <- ligera_f_multi( X, trait, kinship_est, one_per_iter = TRUE )
+    expect_equal( tib_multi_f_opi, tib_multi_f_opi_basic )
 })
 
 test_that("ligera2_multi runs with X missingness without errors, matches ligera_multi", {
@@ -1207,6 +1300,37 @@ test_that("ligera2_multi runs with X missingness without errors, matches ligera_
         inbr = inbr_est_miss
     )
     expect_equal( tib_multi_miss, tib_multi_miss_basic )
+})
+
+test_that("ligera2_f_multi runs with X missingness without errors, matches ligera_f_multi", {
+    # NOTE: use <<- to remember variable globally (outside this scope)
+    expect_silent(
+        tib_multi_f_miss <<- ligera2_f_multi(
+            X = X_miss,
+            trait = trait,
+            mean_kinship = mean_kinship
+        )
+    )
+    expect_true( is_tibble( tib_multi_f_miss ) )
+    expect_equal( names( tib_multi_f_miss ), c('pval', 'beta', 'f_stat', 'df', 'qval', 'sel') )
+    expect_equal( nrow( tib_multi_f_miss ), m )
+    expect_true( !anyNA( tib_multi_f_miss ) )
+    # range for some things
+    expect_true( all( tib_multi_f_miss$pval >= 0 ) )
+    expect_true( all( tib_multi_f_miss$pval <= 1 ) )
+    expect_true( all( tib_multi_f_miss$qval >= 0 ) )
+    expect_true( all( tib_multi_f_miss$qval <= 1 ) )
+    expect_true( all( tib_multi_f_miss$f_stat >= 0 ) )
+    expect_true( all( tib_multi_f_miss$df > 0 ) )
+    expect_true( all( tib_multi_f_miss$sel >= 0 ) )
+    
+    # compare to earlier ligera with exact same kinship matrix for comparison
+    tib_multi_f_miss_basic <- ligera_f_multi(
+        X = X_miss,
+        trait = trait,
+        kinship = kinship_est_miss
+    )
+    expect_equal( tib_multi_f_miss, tib_multi_f_miss_basic )
 })
 
 

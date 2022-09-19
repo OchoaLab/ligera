@@ -13,12 +13,24 @@ cgsolve_mat <- function(
     if ( transpose ) {
         # fill it one row-turned-column at the time
         for ( k in 1 : nrow(Y) ) {
-            Z[ k, ] <- drop( cPCG::cgsolve( kinship, Y[ k, ], tol = tol, maxIter = maxIter ) )
+            if ( all( Y[ k, ] == 0 ) ) {
+                # handle an annoying edge cases that is expected to occur in genetic data if there are fixed loci (residuals are zero there!)
+                # sadly, in these cases cgsolve returns NaN instead of the obvious zero solution
+                Z[ k, ] <- 0
+            } else {
+                Z[ k, ] <- drop( cPCG::cgsolve( kinship, Y[ k, ], tol = tol, maxIter = maxIter ) )
+            }
         }
     } else {
         # fill it one column at the time
         for ( k in 1 : ncol(Y) ) {
-            Z[ , k ] <- drop( cPCG::cgsolve( kinship, Y[ , k ], tol = tol, maxIter = maxIter ) )
+            if ( all( Y[ , k ] == 0 ) ) {
+                # handle an annoying edge cases that is expected to occur in genetic data if there are fixed loci (residuals are zero there!)
+                # sadly, in these cases cgsolve returns NaN instead of the obvious zero solution
+                Z[ , k ] <- 0
+            } else {
+                Z[ , k ] <- drop( cPCG::cgsolve( kinship, Y[ , k ], tol = tol, maxIter = maxIter ) )
+            }
         }
     }
     return( Z )

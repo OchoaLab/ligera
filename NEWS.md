@@ -80,3 +80,9 @@
 # ligera 1.0.11.9000 (2022-09-18)
 
 - Functions `ligera_f`, `ligera2_f`: removed previous `V=1` algorithm, which was numerically unstable.  Shifted down previous versions `2:3` to `1:2`.
+
+# ligera 1.0.12.9000 (2022-09-18)
+
+- Added function `ligera2_f_multi`.
+- Internal function changes:
+  - `conj_grad_scan` and `cgsolve_mat`: handled a case where input `Y` has a column of zeroes, which should give an output `Z` with zeroes in the same columns but which the conjugate gradient algorithm gave NaN's for those same columns of `Z` (because of a 0/0 factor).  This special case is now recognized and handled correctly.
