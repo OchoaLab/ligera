@@ -908,43 +908,33 @@ test_that("ligera2_f V=2 runs on random data without missingness, matches V=0", 
     expect_equal( tib5_f2, tib5_f )
 })
 
-# weirdly cases that should be NaN are sometimes random numbers (including negative f_stats, or Inf, etc) with different versions, not worth debugging at this point to ensure compatibility in this edge case
-## test_that("ligera2_f works on weird case, matches ligera_f", {
-##     # this is an odd example I just came up with for multiscan, which reliably makes ligera2_f fail!
-##     # OK, problem is constant loci (includes fixed but also all-hetz case), which are not being removed in example!  New code catches that and handles correctly!
-##     n_ind <- 5
-##     m_loci <- 100
-##     X <- matrix(
-##         rbinom( m_loci * n_ind, 2, 0.5 ),
-##         nrow = m_loci
-##     )
-##     # introduce fixed locus on purpose to cause problem reliably
-##     X[1, ] <- 1
-##     # random trait
-##     trait <- rnorm( n_ind )
-##     ## # add a genetic effect from first locus
-##     ## trait <- trait + X[ 1, ]
-##     # a required parameter
-##     mean_kinship <- mean( diag( n_ind ) / 2 ) # unstructured case
+test_that("ligera2_f works on weird case, matches ligera_f", {
+    # this is an odd example I just came up with for multiscan, which reliably makes ligera2_f fail!
+    # OK, problem is constant loci (includes fixed but also all-hetz case), which are not being removed in example!  New code catches that and handles correctly!
+    n_ind <- 5
+    m_loci <- 100
+    X <- matrix(
+        rbinom( m_loci * n_ind, 2, 0.5 ),
+        nrow = m_loci
+    )
+    # introduce fixed locus on purpose to cause problem reliably
+    X[1, ] <- 1
+    # random trait
+    trait <- rnorm( n_ind )
+    # a required parameter
+    mean_kinship <- mean( diag( n_ind ) / 2 ) # unstructured case
     
-##     tib2 <- ligera2_f( X, trait, mean_kinship )
-##     #if ( anyNA( tib2 ) )
-##     indexes <- is.na( tib2$pval )
+    tib2 <- ligera2_f( X, trait, mean_kinship )
     
-##     # additional work to get this other version to work
-##     x_bar <- rowMeans( X )
-##     b <- (1 - mean( x_bar * ( 2 - x_bar ) ) - mean_kinship ) / ( 1 - mean_kinship )
-##     kinship_est <- ( crossprod( X - 1 ) / m_loci - b ) / ( 1 - b ) # here we do normalize properly for a plot
-##     #tib1 <- ligera_f_basic( X, trait, solve( kinship_est ) )
-##     tib1 <- ligera_f( X, trait, kinship_est )
-##     ## if ( anyNA( tib1 ) )
-##     ##     print('tib1 has NAs!')
-##     ##if ( any( indexes ) ) {
-##     print( tib2[ indexes, ] )
-##     print( tib1[ indexes, ] )
-##     ##}
-##     expect_equal( tib2, tib1 )
-## })
+    # additional work to get this other version to work
+    x_bar <- rowMeans( X )
+    b <- (1 - mean( x_bar * ( 2 - x_bar ) ) - mean_kinship ) / ( 1 - mean_kinship )
+    kinship_est <- ( crossprod( X - 1 ) / m_loci - b ) / ( 1 - b ) # here we do normalize properly for a plot
+    # for ligera_f_basic, weirdly cases that should be NaN are sometimes random numbers (including negative f_stats, or Inf, etc) with different versions, not worth debugging at this point to ensure compatibility in this edge case
+    #tib1 <- ligera_f_basic( X, trait, solve( kinship_est ) ) # direct sol is more numerically sensitive???
+    tib1 <- ligera_f( X, trait, kinship_est ) # uses cgsolve, which has the same solution to issue
+    expect_equal( tib2, tib1 )
+})
 
 test_that("ligera2 runs on random data with missingness in X", {
     # NOTE: use <<- to remember variable globally (outside this scope)

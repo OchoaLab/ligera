@@ -13,7 +13,7 @@ cgsolve_mat <- function(
     if ( transpose ) {
         # fill it one row-turned-column at the time
         for ( k in 1 : nrow(Y) ) {
-            if ( all( Y[ k, ] == 0 ) ) {
+            if ( sum( Y[ k, ]^2 ) < tol ) {
                 # handle an annoying edge cases that is expected to occur in genetic data if there are fixed loci (residuals are zero there!)
                 # sadly, in these cases cgsolve returns NaN instead of the obvious zero solution
                 Z[ k, ] <- 0
@@ -24,7 +24,7 @@ cgsolve_mat <- function(
     } else {
         # fill it one column at the time
         for ( k in 1 : ncol(Y) ) {
-            if ( all( Y[ , k ] == 0 ) ) {
+            if ( sum( Y[ , k ]^2 ) < tol ) {
                 # handle an annoying edge cases that is expected to occur in genetic data if there are fixed loci (residuals are zero there!)
                 # sadly, in these cases cgsolve returns NaN instead of the obvious zero solution
                 Z[ , k ] <- 0
