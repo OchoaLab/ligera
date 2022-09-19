@@ -1601,6 +1601,35 @@ if (
         expect_equal( tib7, tib7_bed )
     })
 
+    test_that("ligera2_bed_f recovers R matrix outputs", {
+        tib5_bed_f <- ligera2_bed_f(
+            file = name,
+            m_loci = m,
+            n_ind = n,
+            trait = trait,
+            mean_kinship = mean_kinship
+        )
+        expect_equal( tib5_f, tib5_bed_f )
+        
+        tib6_bed_f <- ligera2_bed_f(
+            file = name_miss,
+            m_loci = m,
+            n_ind = n,
+            trait = trait,
+            mean_kinship = mean_kinship
+        )
+        expect_equal( tib6_f, tib6_bed_f )
+
+        tib7_bed_f <- ligera2_bed_f(
+            file = name,
+            m_loci = m,
+            n_ind = n,
+            trait = trait_miss,
+            mean_kinship = mean_kinship
+        )
+        expect_equal( tib7_f, tib7_bed_f )
+    })
+    
     test_that("ligera2_bed works with covariates", {
         expect_silent(
             tib_covar_bed <- ligera2_bed(
@@ -1613,6 +1642,20 @@ if (
             )
         )
         expect_equal( tib_covar, tib_covar_bed )
+    })
+
+    test_that("ligera2_bed_f works with covariates", {
+        expect_silent(
+            tib_covar_bed_f <- ligera2_bed_f(
+                file = name,
+                m_loci = m,
+                n_ind = n,
+                trait = trait,
+                mean_kinship = mean_kinship,
+                covar = covar
+            )
+        )
+        expect_equal( tib_covar_f, tib_covar_bed_f )
     })
 
     test_that("ligera2_bed works with covariates with missingness", {
@@ -1629,6 +1672,50 @@ if (
         expect_equal( tib_covar_miss, tib_covar_miss_bed )
     })
 
+    test_that("ligera2_bed_f works with covariates with missingness", {
+        expect_silent(
+            tib_covar_miss_bed_f <- ligera2_bed_f(
+                file = name,
+                m_loci = m,
+                n_ind = n,
+                trait = trait,
+                mean_kinship = mean_kinship,
+                covar = covar_miss
+            )
+        )
+        expect_equal( tib_covar_miss_f, tib_covar_miss_bed_f )
+    })
+    
+    test_that("ligera2_bed_f V=1 agrees with V=0 with covariates with missingness", {
+        expect_silent(
+            tib_covar_miss_bed_f1 <- ligera2_bed_f(
+                file = name,
+                m_loci = m,
+                n_ind = n,
+                trait = trait,
+                mean_kinship = mean_kinship,
+                covar = covar_miss,
+                V = 1
+            )
+        )
+        expect_equal( tib_covar_miss_bed_f1, tib_covar_miss_f )
+    })
+    
+    test_that("ligera2_bed_f V=2 agrees with V=0 with covariates with missingness", {
+        expect_silent(
+            tib_covar_miss_bed_f2 <- ligera2_bed_f(
+                file = name,
+                m_loci = m,
+                n_ind = n,
+                trait = trait,
+                mean_kinship = mean_kinship,
+                covar = covar_miss,
+                V = 2
+            )
+        )
+        expect_equal( tib_covar_miss_bed_f2, tib_covar_miss_f )
+    })
+    
     test_that("ligera2_bed_multi runs without errors, matches ligera2_multi", {
         expect_silent(
             tib_multi_bed <- ligera2_bed_multi(

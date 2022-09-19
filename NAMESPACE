@@ -3,6 +3,7 @@
 export(ligera)
 export(ligera2)
 export(ligera2_bed)
+export(ligera2_bed_f)
 export(ligera2_bed_multi)
 export(ligera2_f)
 export(ligera2_f_multi)
