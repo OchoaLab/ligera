@@ -1729,6 +1729,19 @@ if (
         expect_equal( tib_multi, tib_multi_bed )
     })
 
+    test_that("ligera2_bed_f_multi runs without errors, matches ligera2_f_multi", {
+        expect_silent(
+            tib_multi_bed_f <- ligera2_bed_f_multi(
+                file = name,
+                m_loci = m,
+                n_ind = n,
+                trait = trait,
+                mean_kinship = mean_kinship
+            )
+        )
+        expect_equal( tib_multi_f, tib_multi_bed_f )
+    })
+
     test_that("ligera2_bed_multi `one_per_iter = TRUE` runs without errors, matches ligera2_multi", {
         expect_silent(
             tib_multi_opi_bed <- ligera2_bed_multi(
@@ -1741,6 +1754,20 @@ if (
             )
         )
         expect_equal( tib_multi_opi, tib_multi_opi_bed )
+    })
+
+    test_that("ligera2_bed_f_multi `one_per_iter = TRUE` runs without errors, matches ligera2_f_multi", {
+        expect_silent(
+            tib_multi_opi_bed_f <- ligera2_bed_f_multi(
+                file = name,
+                m_loci = m,
+                n_ind = n,
+                trait = trait,
+                mean_kinship = mean_kinship,
+                one_per_iter = TRUE
+            )
+        )
+        expect_equal( tib_multi_f_opi, tib_multi_opi_bed_f )
     })
 
     # delete temporary files now

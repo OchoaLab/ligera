@@ -129,7 +129,7 @@ ligera2_bed_multi <- function(
             X_i <- X[ , indexes, drop = FALSE ] # BEDMatrix orientation
             
             # add to covariates matrix now
-            covar <- if ( is.null( covar ) ) X_i else cbind( covar, X_i )
+            covar <- cbind( covar, X_i )
             
             # `new_selec` stays `TRUE`
         }

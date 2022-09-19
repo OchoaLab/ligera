@@ -145,7 +145,7 @@ ligera2_multi <- function(
             X_i <- if ( loci_on_cols ) X[ , indexes, drop = FALSE ] else t( X[ indexes, , drop = FALSE ] )
             
             # add to covariates matrix now
-            covar <- if ( is.null( covar ) ) X_i else cbind( covar, X_i )
+            covar <- cbind( covar, X_i )
             
             # `new_selec` stays `TRUE`
         }

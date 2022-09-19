@@ -9,7 +9,7 @@
 #'
 #' @param X The `m`-by-`n` genotype matrix, containing dosage values in (0, 1, 2, NA) for the reference allele at each locus.
 #' @param trait The length-`n` trait vector, which may be real valued and contain missing values.
-#' @param mean_kinship An estimate of the mean kinship produced externally, to ensure internal estimates of kinship and inbreeding are unbiased.
+#' @param mean_kinship An estimate of the mean kinship produced externally, to ensure internal estimates of kinship are unbiased.
 #' @param q_cut The q-value threshold to admit new loci into the polygenic model.
 #' @param one_per_iter If true, only the most significant locus per iteration is added to model of next iteration.  Otherwise all significant loci per iteration are added to the model of next iteration.
 #' @param covar An optional `n`-by-`K` matrix of `K` covariates, aligned with the individuals.
@@ -146,7 +146,7 @@ ligera2_f_multi <- function(
             X_i <- if ( loci_on_cols ) X[ , indexes, drop = FALSE ] else t( X[ indexes, , drop = FALSE ] )
             
             # add to covariates matrix now
-            covar <- if ( is.null( covar ) ) X_i else cbind( covar, X_i )
+            covar <- cbind( covar, X_i )
             
             # `new_selec` stays `TRUE`
         }

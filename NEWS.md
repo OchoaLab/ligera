@@ -90,3 +90,8 @@
 # ligera 1.0.13.9000 (2022-09-19)
 
 - Added function `ligera2_bed_f`.
+
+# ligera 1.0.14.9000 (2022-09-19)
+
+- Added function `ligera2_bed_f_multi`.
+

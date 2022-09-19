@@ -1,21 +1,21 @@
-#' LIGERA_multi: LIght GEnetic Robust Association multiscan function
+#' LIGERA2 BED multi: LIght GEnetic Robust Association multiscan function
 #'
 #' This function performs multiple genetic association scans, adding one significant locus per iteration to the model (modeled as a covariate) to increase power in the final model.
 #' The function returns a tibble containing association statistics and several intermediates.
 #' This version calculates p-values using an F-test, which gives calibrated statistics under both quantitative and binary traits.
 #' Compared to [ligera()], which uses the faster Wald test (calibrated for quantitative but not binary traits), this F-test version is quite a bit slower, and is optimized for `m >> n`, so it is a work in progress.
+#' This optimized version requires the genotypes to be in a file in BED format.
 #' 
 #' Suppose there are `n` individuals and `m` loci.
 #'
-#' @param X The `m`-by-`n` genotype matrix, containing dosage values in (0, 1, 2, NA) for the reference allele at each locus.
+#' @param file The path to the BED file containing the genotypes, potentially excluding the BED extension.
+#' @param m_loci The number of loci in the BED file.
+#' @param n_ind The number of individuals in the BED file.
 #' @param trait The length-`n` trait vector, which may be real valued and contain missing values.
-#' @param kinship The `n`-by-`n` kinship matrix, estimated by other methods (i.e. the `popkin` package).
+#' @param mean_kinship An estimate of the mean kinship produced externally, to ensure internal estimates of kinship are unbiased.
 #' @param q_cut The q-value threshold to admit new loci into the polygenic model.
 #' @param one_per_iter If true, only the most significant locus per iteration is added to model of next iteration.  Otherwise all significant loci per iteration are added to the model of next iteration.
-#' @param kinship_inv The optional matrix inverse of the kinship matrix.  Setting this parameter is not recommended, as internally a conjugate gradient method (`\link[cPCG]{cgsolve}`) is used to implicitly invert this matrix, which is much faster.  However, for very large numbers of traits without missingness and the same kinship matrix, inverting once might be faster.
 #' @param covar An optional `n`-by-`K` matrix of `K` covariates, aligned with the individuals.
-#' @param loci_on_cols If `TRUE`, `X` has loci on columns and individuals on rows; if false (the default), loci are on rows and individuals on columns.
-#' If `X` is a BEDMatrix object, `loci_on_cols = TRUE` is set automatically.
 #' @param mem_factor Proportion of available memory to use loading and processing genotypes.
 #' Ignored if `mem_lim` is not `NA`.
 #' @param mem_lim Memory limit in GB, used to break up genotype data into chunks for very large datasets.
@@ -23,8 +23,7 @@
 #' Default in Linux and Windows is `mem_factor` times the free system memory, otherwise it is 1GB (OSX and other systems).
 #' @param m_chunk_max Sets the maximum number of loci to process at the time.
 #' Actual number of loci loaded may be lower if memory is limiting.
-#' @param tol Tolerance value passed to `\link[cPCG]{cgsolve}`.
-#' @param maxIter Maximum number of iterations passed to `\link[cPCG]{cgsolve}`.
+#' @param tol Tolerance value passed to conjugate gradient method solver.
 #'
 #' @return A tibble containing the following association statistics from the last scan for non-selected loci.
 #' For selected loci, these are the values from the scan before each was added to the model (as after addition they get `beta ~= 0` and `pval ~= 1`).
@@ -37,46 +36,26 @@
 #' - `sel`: the order in which loci were selected, or zero if they were not selected.
 #'
 #' @examples
-#' # Construct random data
-#' # number of individuals we want
-#' n_ind <- 5
-#' # number of loci we want
-#' m_loci <- 100
-#' # a not so small random genotype matrix
-#' X <- matrix(
-#'     rbinom( m_loci * n_ind, 2, 0.5 ),
-#'     nrow = m_loci
-#' )
-#' # random trait
-#' trait <- rnorm( n_ind )
-#' # add a genetic effect from first locus
-#' trait <- trait + X[ 1, ]
-#' # kinship matrix
-#' kinship <- diag( n_ind ) / 2 # unstructured case
-#'
-#' tib <- ligera_f_multi( X, trait, kinship )
-#' tib
+#' # MISSING SAMPLE BED FILE
 #'
 #' @seealso
-#' The `popkin` and `cPCG` packages.
+#' The `popkin` package.
 #' 
 #' @export
-ligera_f_multi <- function(
-                           X,
-                           trait,
-                           kinship,
-                           q_cut = 0.05,
-                           one_per_iter = FALSE,
-                           kinship_inv = NULL,
-                           covar = NULL,
-                           loci_on_cols = FALSE,
-                           mem_factor = 0.7,
-                           mem_lim = NA,
-                           m_chunk_max = 1000,
-                           # cgsolve options
-                           tol = 1e-15, # default 1e-6
-                           maxIter = 1e6 # default 1e3
-                           ) {
+ligera2_bed_f_multi <- function(
+                                file,
+                                m_loci,
+                                n_ind,
+                                trait,
+                                mean_kinship,
+                                q_cut = 0.05,
+                                one_per_iter = FALSE,
+                                covar = NULL,
+                                mem_factor = 0.7,
+                                mem_lim = NA,
+                                m_chunk_max = 1000,
+                                tol = 1e-15
+                                ) {
     # things to initialize for loop
     # indexes of selected loci, to remember
     loci_selected <- c()
@@ -85,28 +64,26 @@ ligera_f_multi <- function(
     # initialize to TRUE so first iteration occurs
     new_selec <- TRUE
     
-    # need to have this here
-    if ('BEDMatrix' %in% class(X))
-        loci_on_cols <- TRUE
-
+    # load genotypes using BEDMatrix, for loading selected loci as covariates
+    X <- BEDMatrix::BEDMatrix( file, n = n_ind, p = m_loci )
+    
     # loop while there are still significant loci
     while( new_selec ) {
         # assume that covar has been grown to include selected loci already
 
         # run ligera
         # NOTE: selected loci become insigificant when retested
-        tib <- ligera_f(
-            X = X,
+        tib <- ligera2_bed_f(
+            file = file,
+            m_loci = m_loci,
+            n_ind = n_ind,
             trait = trait,
-            kinship = kinship,
-            kinship_inv = kinship_inv,
+            mean_kinship = mean_kinship,
             covar = covar,
-            loci_on_cols = loci_on_cols,
             mem_factor = mem_factor,
             mem_lim = mem_lim,
             m_chunk_max = m_chunk_max,
-            tol = tol,
-            maxIter = maxIter
+            tol = tol
         )
 
         # add q-values
@@ -150,7 +127,7 @@ ligera_f_multi <- function(
             # first extract genotype submatrix
             # NOTE this is matrix even if there was a single index there
             # here transposition is backwards than usual (individuals in X are usually on the column, but as covariates we need then on the rows!)
-            X_i <- if ( loci_on_cols ) X[ , indexes, drop = FALSE ] else t( X[ indexes, , drop = FALSE ] )
+            X_i <- X[ , indexes, drop = FALSE ] # BEDMatrix orientation
             
             # add to covariates matrix now
             covar <- cbind( covar, X_i )
