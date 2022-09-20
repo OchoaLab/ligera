@@ -1,6 +1,6 @@
 Package: ligera
 Title: LIght GEnetic Robust Association
-Version: 1.0.14.9000
+Version: 1.0.15.9000
 Authors@R: 
     person(given = "Alejandro",
 	   family = "Ochoa",
@@ -14,6 +14,7 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.2.1
 Imports:
     popkin,
+    genio,
     cPCG,
     tibble,
     BEDMatrix,
@@ -27,7 +28,6 @@ Suggests:
     testthat,
     knitr,
     rmarkdown,
-    genio,
     popkinsuppl
 LinkingTo: 
     Rcpp

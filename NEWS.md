@@ -95,3 +95,10 @@
 
 - Added function `ligera2_bed_f_multi`.
 
+# ligera 1.0.15.9000 (2022-09-20)
+
+- Function `ligera2_bed_f_multi` added ability to filter discovered loci by LD, using internal function `ld_prune`.
+  - Added parameters `prune_ld` to turn this feature on, and `r2_max` and `pos_window` to control how pruning is done.
+  - Removed parameters `m_loci` and `n_ind` now that function just reads BIM and FAM files in addition to BED file that is required.
+    - Package `genio` is now imported to read these files (used to be merely "suggested").
+  - Function returns a bigger tibble containing the BIM table prepended to the previous association outputs.

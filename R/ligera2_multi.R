@@ -147,17 +147,13 @@ ligera2_multi <- function(
             # add to covariates matrix now
             covar <- cbind( covar, X_i )
             
-            # `new_selec` stays `TRUE`
-        }
-        # otherwise `new_selec == FALSE`, so we're done
-
-        if ( new_selec && !is.null( covar ) ) {
             # it seems in odd cases (like my tiny test simulations) the number of covariates grows to be more than the number of parameters!
             # check here, force stop if this is exceeded
             # (otherwise matrices inside become singular, causes confusing problems!)
             if ( nrow( covar ) < ncol( covar ) )
                 new_selec <- FALSE # force stop!
         }
+        # otherwise `new_selec == FALSE`, so we're done
     }
 
     # it'd be nice to return the last tibble, but again the selected loci will all have p=1

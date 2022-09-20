@@ -146,6 +146,99 @@ covar <- cbind(
 covar_miss <- covar
 covar_miss[ sample( 2 * n, 2 * n * miss ) ] <- NA
 
+# for ld_prune tests, draw some more global variables
+# draw random "p-values"
+pvals_prune_in <- runif( m )
+# leave constant loci but make sure they are always most insignificant, as they should be in reality
+# because fixed loci were already excluded, only all-hetz case is left
+# use same pvalues for both cases (missingness and non-missingness; they are technically subsets but because of fixed redraws it might not be exactly so, this guarantees that it'll all work)
+pvals_prune_in[ rowMeans( X == 1L ) == 1 ] <- 1
+pvals_prune_in[ rowMeans( X_miss == 1L, na.rm = TRUE ) == 1 ] <- 1
+indexes_prune_in <- sample.int( m, 20L ) # works if m=1000
+r2_max <- 0.3 # default
+
+test_that( "ld_prune works", {
+    # when selecting a single random index, it should always be kept!
+    index <- sample.int( m, 1L )
+    expect_equal( ld_prune( X, pvals_prune_in, index, r2_max = r2_max ), index )
+
+    # bigger test on random data
+    # NOTE: use <<- to remember variable globally (outside this scope)
+    # (will compare to bedmatrix versions)
+    expect_silent(
+        indexes_prune_out <<- ld_prune( X, pvals_prune_in, indexes_prune_in, r2_max = r2_max )
+    )
+    # output should be subset of input
+    expect_true( all( indexes_prune_out %in% indexes_prune_in ) )
+    # confirm that remaining dataset has all squared correlations below cutoff
+    # NOTE: default is correlations of columns, but we want rows! (hence transpose)
+    r2s <- cor( t( X[ indexes_prune_out, , drop = FALSE ] ), use = 'pairwise.complete.obs' )^2
+    # exclude diagonal from test, of course
+    # all of these should be non-missing
+    expect_true( all( r2s[ lower.tri( r2s ) ] <= r2_max ) )
+    
+    # repeat test with missingness in X
+    expect_silent(
+        indexes_prune_out_miss <<- ld_prune( X_miss, pvals_prune_in, indexes_prune_in, r2_max = r2_max )
+    )
+    # output should be subset of input
+    expect_true( all( indexes_prune_out_miss %in% indexes_prune_in ) )
+    # also suppress warnings here!
+    suppressWarnings(
+        r2s <- cor( t( X_miss[ indexes_prune_out_miss, , drop = FALSE ] ), use = 'pairwise.complete.obs' )^2
+    )
+    # exclude diagonal from test, of course
+    # these may have missingness where there are no complete pairwise cases (which were treated as independent)
+    expect_true( all( abs( r2s[ lower.tri( r2s ) ] ) <= r2_max, na.rm = TRUE ) )
+
+    # test with bim
+    # will only test here (no BEDMatrix version) so no need for global copies of random data
+    # minimal bim table with just coordinates, all that is needed
+    pos_window <- 10000000L # default 10 Mb
+    n_chr <- 10L # 10 chrs, equal numbers of SNPs each case (100)
+    bim <- tibble(
+        chr = ceiling( ( 1L : m ) / m * n_chr ) ,
+        pos = seq.int( 1L, by = pos_window/10L, length.out = m ) # LD window contains exactly 10 SNPs in each case
+    )
+    # test case with missingness only
+    expect_silent(
+        indexes <- ld_prune( X_miss, pvals_prune_in, indexes_prune_in, r2_max = r2_max, bim = bim, pos_window = pos_window )
+    )
+    # is it the case that these indexes are always supersets of the case without chr/pos pass?
+    chrs <- bim$chr[ indexes ]
+    for ( chr in 1L : n_chr ) {
+        # test each chr separately (correlations across chromosomes exceeding r2_max would be left there if they happen)
+        indexes_chr <- indexes[ chrs == chr ]
+        # some chrs have no hits, just test ones with hits
+        # also singletons are uninteresting, only test bigger sets
+        if ( length( indexes_chr ) > 1L ) {
+            suppressWarnings(
+                r2s <- cor( t( X_miss[ indexes_chr, , drop = FALSE ] ), use = 'pairwise.complete.obs' )^2
+            )
+            # this is not true in general, because of the window threshold!
+            # treat things farther than window as having zero correlation
+            pos <- bim$pos[ indexes_chr ]
+            for ( i in 2L : length( pos ) ) {
+                for ( j in 1L : (i-1L) ) {
+                    if ( abs( pos[i] - pos[j] ) > pos_window ) {
+                        r2s[i,j] <- 0 # only lower triangle needs editing
+                        # r2s[j,i] <- 0
+                    }
+                }
+            }
+            expect_true( all( abs( r2s[ lower.tri( r2s ) ] ) <= r2_max, na.rm = TRUE ) )
+        }
+    }
+
+    # repeat test providing BIM but setting window size to zero, which is code for ignoring BIM even if it is provided
+    # test case with missingness only
+    expect_silent(
+        indexes <- ld_prune( X_miss, pvals_prune_in, indexes_prune_in, r2_max = r2_max, bim = bim, pos_window = 0L )
+    )
+    expect_equal( indexes, indexes_prune_out_miss )
+})
+
+
 test_that("covar_fix_na works", {
     out <- covar_fix_na( covar_miss )
     expect_true( !anyNA( out ) )
@@ -1383,7 +1476,19 @@ if (
     # load this way, passing dims, for speed and to avoid dimnames (complicates testing)
     X_BEDMatrix <- suppressMessages( suppressWarnings( BEDMatrix( name, n = n, p = m ) ) )
     X_miss_BEDMatrix <- suppressMessages( suppressWarnings( BEDMatrix( name_miss, n = n, p = m ) ) )
-    
+
+    test_that( "ld_prune works on BEDMatrix data, recovers R matrix outputs", {
+        # just want equality, noting else matters
+        expect_equal(
+            ld_prune( X_BEDMatrix, pvals_prune_in, indexes_prune_in, r2_max = r2_max ),
+            indexes_prune_out
+        )
+        expect_equal(
+            ld_prune( X_miss_BEDMatrix, pvals_prune_in, indexes_prune_in, r2_max = r2_max ),
+            indexes_prune_out_miss
+        )
+    })
+
     ### ligera ###
     
     test_that("ligera runs correctly on BEDMatrix data, recovers R matrix outputs", {
@@ -1733,13 +1838,15 @@ if (
         expect_silent(
             tib_multi_bed_f <- ligera2_bed_f_multi(
                 file = name,
-                m_loci = m,
-                n_ind = n,
                 trait = trait,
                 mean_kinship = mean_kinship
             )
         )
-        expect_equal( tib_multi_f, tib_multi_bed_f )
+        # remove bim portion before comparing
+        tib_multi_bed_f[ c('chr', 'id', 'posg', 'pos', 'ref', 'alt') ] <- NULL
+        # stupid subset ([]) used to make classes match, otherwise the latter has "spec_tbl_df" "tbl_df" "tbl" "data.frame" , the latter is missing the first one
+        # https://www.tidyverse.org/blog/2018/12/readr-1-3-1/#tibble-subclass
+        expect_equal( tib_multi_f, tib_multi_bed_f[] )
     })
 
     test_that("ligera2_bed_multi `one_per_iter = TRUE` runs without errors, matches ligera2_multi", {
@@ -1760,14 +1867,28 @@ if (
         expect_silent(
             tib_multi_opi_bed_f <- ligera2_bed_f_multi(
                 file = name,
-                m_loci = m,
-                n_ind = n,
                 trait = trait,
                 mean_kinship = mean_kinship,
                 one_per_iter = TRUE
             )
         )
-        expect_equal( tib_multi_f_opi, tib_multi_opi_bed_f )
+        # remove bim portion before comparing
+        tib_multi_opi_bed_f[ c('chr', 'id', 'posg', 'pos', 'ref', 'alt') ] <- NULL
+        # stupid subset ([]) used to make classes match, otherwise the latter has "spec_tbl_df" "tbl_df" "tbl" "data.frame" , the latter is missing the first one
+        # https://www.tidyverse.org/blog/2018/12/readr-1-3-1/#tibble-subclass
+        expect_equal( tib_multi_f_opi, tib_multi_opi_bed_f[] )
+    })
+
+    test_that("ligera2_bed_f_multi runs with `prune_ld = TRUE`", {
+        # don't check output in this case, just hope there are no errors/warnings/messages
+        expect_silent(
+            tib <- ligera2_bed_f_multi(
+                file = name,
+                trait = trait,
+                mean_kinship = mean_kinship,
+                prune_ld = TRUE
+            )
+        )
     })
 
     # delete temporary files now

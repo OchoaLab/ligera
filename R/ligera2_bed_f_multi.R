@@ -9,8 +9,6 @@
 #' Suppose there are `n` individuals and `m` loci.
 #'
 #' @param file The path to the BED file containing the genotypes, potentially excluding the BED extension.
-#' @param m_loci The number of loci in the BED file.
-#' @param n_ind The number of individuals in the BED file.
 #' @param trait The length-`n` trait vector, which may be real valued and contain missing values.
 #' @param mean_kinship An estimate of the mean kinship produced externally, to ensure internal estimates of kinship are unbiased.
 #' @param q_cut The q-value threshold to admit new loci into the polygenic model.
@@ -24,10 +22,19 @@
 #' @param m_chunk_max Sets the maximum number of loci to process at the time.
 #' Actual number of loci loaded may be lower if memory is limiting.
 #' @param tol Tolerance value passed to conjugate gradient method solver.
-#'
+#' @param prune_ld If `TRUE` (default `FALSE`), at every iteration (including the first one) if there is more than one new locus discovered, the set of loci is pruned by removing correlated loci with the following parameters.
+#' @param r2_max Maximum squared correlation coefficient between loci (ignored if `prune_ld = FALSE`).
+#' @param pos_window Window size, in basepairs, for on which to apply pruning (ignored if `prune_ld = FALSE`).  If `pos_window > 0`, only pairs of loci in the same chromosome and with positions less than `pos_window` away will be pruned.  However, if `pos_window == 0L` then all variants are pruned regardless of chr/pos values.
+#' 
 #' @return A tibble containing the following association statistics from the last scan for non-selected loci.
 #' For selected loci, these are the values from the scan before each was added to the model (as after addition they get `beta ~= 0` and `pval ~= 1`).
-#' 
+#'
+#' - `chr`: Chromosome of locus.
+#' - `id`: Locus ID.
+#' - `posg`: Position in genetic distance.
+#' - `pos`: Position in basepairs.
+#' - `alt`: Alternative allele.
+#' - `ref`: Reference allele (counted).
 #' - `pval`: The p-value of the last association scan.
 #' - `beta`: The estimated effect size coefficient for the trait vector at this locus.
 #' - `f_stat`: The F statistic.
@@ -44,8 +51,6 @@
 #' @export
 ligera2_bed_f_multi <- function(
                                 file,
-                                m_loci,
-                                n_ind,
                                 trait,
                                 mean_kinship,
                                 q_cut = 0.05,
@@ -54,7 +59,10 @@ ligera2_bed_f_multi <- function(
                                 mem_factor = 0.7,
                                 mem_lim = NA,
                                 m_chunk_max = 1000,
-                                tol = 1e-15
+                                tol = 1e-15,
+                                prune_ld = FALSE,
+                                r2_max = 0.3,
+                                pos_window = 10000000L
                                 ) {
     # things to initialize for loop
     # indexes of selected loci, to remember
@@ -63,6 +71,14 @@ ligera2_bed_f_multi <- function(
     # were there new selections?  To know if we've converged
     # initialize to TRUE so first iteration occurs
     new_selec <- TRUE
+
+    # unlike previous versions, here we want BIM for proper filtering of
+    bim <- genio::read_bim( file, verbose = FALSE )
+    # infer number of loci
+    m_loci <- nrow( bim )
+    # we don't need fam details but we do want number of individuals
+    # (could get from trait vector, but this is better validation)
+    n_ind <- genio::count_lines( file, ext = 'fam', verbose = FALSE )
     
     # load genotypes using BEDMatrix, for loading selected loci as covariates
     X <- BEDMatrix::BEDMatrix( file, n = n_ind, p = m_loci )
@@ -72,7 +88,7 @@ ligera2_bed_f_multi <- function(
         # assume that covar has been grown to include selected loci already
 
         # run ligera
-        # NOTE: selected loci become insigificant when retested
+        # NOTE: selected loci become insignificant when retested
         tib <- ligera2_bed_f(
             file = file,
             m_loci = m_loci,
@@ -114,6 +130,17 @@ ligera2_bed_f_multi <- function(
         # if there were any newly significant loci, add to covariates and reiterate
         if ( new_selec ) {
 
+            # filter more to avoid LD redundancy, if desired
+            if ( prune_ld ) 
+                indexes <- ld_prune(
+                    X,
+                    tib$pval,
+                    indexes,
+                    r2_max = r2_max,
+                    bim = bim,
+                    pos_window = pos_window
+                )
+
             # add to list of selected loci
             loci_selected <- c( loci_selected, indexes )
 
@@ -132,17 +159,13 @@ ligera2_bed_f_multi <- function(
             # add to covariates matrix now
             covar <- cbind( covar, X_i )
             
-            # `new_selec` stays `TRUE`
-        }
-        # otherwise `new_selec == FALSE`, so we're done
-
-        if ( new_selec && !is.null( covar ) ) {
             # it seems in odd cases (like my tiny test simulations) the number of covariates grows to be more than the number of parameters!
             # check here, force stop if this is exceeded
             # (otherwise matrices inside become singular, causes confusing problems!)
             if ( nrow( covar ) < ncol( covar ) )
                 new_selec <- FALSE # force stop!
         }
+        # otherwise `new_selec == FALSE`, so we're done
     }
 
     # it'd be nice to return the last tibble, but again the selected loci will all have p=1
@@ -158,6 +181,9 @@ ligera2_bed_f_multi <- function(
         tib[ loci_selected, ] <- tib_selected
     }
     
+    # merge BIM into table to have a more complete report
+    tib <- dplyr::bind_cols( bim, tib )
+
     # done, return tibble!
     return( tib )
 }

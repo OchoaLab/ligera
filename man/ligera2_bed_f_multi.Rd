@@ -6,8 +6,6 @@
 \usage{
 ligera2_bed_f_multi(
   file,
-  m_loci,
-  n_ind,
   trait,
   mean_kinship,
   q_cut = 0.05,
@@ -16,15 +14,14 @@ ligera2_bed_f_multi(
   mem_factor = 0.7,
   mem_lim = NA,
   m_chunk_max = 1000,
-  tol = 1e-15
+  tol = 1e-15,
+  prune_ld = FALSE,
+  r2_max = 0.3,
+  pos_window = 10000000L
 )
 }
 \arguments{
 \item{file}{The path to the BED file containing the genotypes, potentially excluding the BED extension.}
-
-\item{m_loci}{The number of loci in the BED file.}
-
-\item{n_ind}{The number of individuals in the BED file.}
 
 \item{trait}{The length-\code{n} trait vector, which may be real valued and contain missing values.}
 
@@ -47,11 +44,23 @@ Default in Linux and Windows is \code{mem_factor} times the free system memory, 
 Actual number of loci loaded may be lower if memory is limiting.}
 
 \item{tol}{Tolerance value passed to conjugate gradient method solver.}
+
+\item{prune_ld}{If \code{TRUE} (default \code{FALSE}), at every iteration (including the first one) if there is more than one new locus discovered, the set of loci is pruned by removing correlated loci with the following parameters.}
+
+\item{r2_max}{Maximum squared correlation coefficient between loci (ignored if \code{prune_ld = FALSE}).}
+
+\item{pos_window}{Window size, in basepairs, for on which to apply pruning (ignored if \code{prune_ld = FALSE}).  If \code{pos_window > 0}, only pairs of loci in the same chromosome and with positions less than \code{pos_window} away will be pruned.  However, if \code{pos_window == 0L} then all variants are pruned regardless of chr/pos values.}
 }
 \value{
 A tibble containing the following association statistics from the last scan for non-selected loci.
 For selected loci, these are the values from the scan before each was added to the model (as after addition they get \verb{beta ~= 0} and \verb{pval ~= 1}).
 \itemize{
+\item \code{chr}: Chromosome of locus.
+\item \code{id}: Locus ID.
+\item \code{posg}: Position in genetic distance.
+\item \code{pos}: Position in basepairs.
+\item \code{alt}: Alternative allele.
+\item \code{ref}: Reference allele (counted).
 \item \code{pval}: The p-value of the last association scan.
 \item \code{beta}: The estimated effect size coefficient for the trait vector at this locus.
 \item \code{f_stat}: The F statistic.
