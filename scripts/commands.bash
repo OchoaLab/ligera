@@ -22,6 +22,12 @@ time Rscript ligera2_bed.R --bfile sample --pheno sample --mean_kinship 0.15 --o
 time Rscript ligera2_bed.R --bfile sample --pheno sample --mean_kinship 0.15 --multi --out sample_ligera2_bed_multi
 # 0m3.887s
 
+# only test with f-statistics
+time Rscript ligera2_bed.R --bfile sample --pheno sample --mean_kinship 0.15 --fstat --out sample_ligera2_bed_f
+# ran for too long, killed
+time Rscript ligera2_bed.R --bfile sample --pheno sample --mean_kinship 0.15 --fstat --multi --out sample_ligera2_bed_f_multi
+# ran for too long, killed
+
 # the ligera and ligera2 outputs are slightly different because kinship estimates are slightly different, but estimates are highly correlated.
 # the ligera2 and ligera2_bed outputs should be identical, but due to limited numerical accuracy there are small differences
 

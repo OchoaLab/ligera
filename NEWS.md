@@ -107,3 +107,7 @@
 
 - Function `ligera2_bed_multi` ported ability to filter discovered loci by LD from `ligera2_bed_f_multi`, and all other related changes from previous entry.
 - Function `ligera2_bed_f_multi` added parameter `V` (to pass to `ligera2_bed_f`).
+
+# ligera 1.0.17.9000 (2022-09-22)
+
+- `scripts/ligera2_bed.R` added `--fstat` option for running `ligera2_bed_f` and `ligera2_bed_f_multi` on a plink1 set of files on the terminal.

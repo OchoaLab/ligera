@@ -1,7 +1,5 @@
 # this package, to perform the genetic association study
 library(ligera)
-# a package that reads genotype matrices using low memory
-library(BEDMatrix)
 # a package that reads the BIM (variant annotations) and FAM (individual annotations) files, and reads and writes other genetics files
 library(genio)
 # for manipulating data.frames/tibbles
@@ -10,6 +8,9 @@ suppressMessages( library(dplyr) )
 library(readr)
 # for terminal options
 library(optparse)
+
+# hardcoded option for _f versions
+V <- 1
 
 ############
 ### ARGV ###
@@ -25,6 +26,8 @@ option_list = list(
                 help = "Mean kinship value", metavar = "double"),
     make_option("--multi", action = "store_true", default = FALSE, 
                 help = "Use multiscan version (slower but more powerful)"),
+    make_option("--fstat", action = "store_true", default = FALSE, 
+                help = "Use f-statistic version (slower but more calibrated)"),
     make_option("--out", type = "character", default = NA, 
                 help = "Base name for report output file (default same as --bfile)", metavar = "character")
 )
@@ -38,6 +41,7 @@ name_phen <- opt$pheno
 name_out <- opt$out
 mean_kinship <- opt$mean_kinship
 multi <- opt$multi
+fstat <- opt$fstat
 
 # check for required values
 if ( is.na( name ) )
@@ -47,15 +51,8 @@ if ( is.na( name_out ) )
     namme_out <- name
 # if name_phen is missing, we read phenotype from FAM (see below)
 
-message('BEDMatrix...')
-# create a BEDMatrix object, which allows random access to the genotypes
-X <- BEDMatrix( name )
-# read the full BIM and FAM tables too
-bim <- read_bim( name )
+# always need fam for phen matching
 fam <- read_fam( name )
-# need dimensions for this version of the analysys
-n_ind <- nrow( fam )
-m_loci <- nrow( bim )
 
 if ( !is.na( name_phen ) ) {
     # if the phenotype is in a separate PHEN file, load that
@@ -75,24 +72,49 @@ if ( !is.na( name_phen ) ) {
 message('ligera...')
 # now we have all the parts we need, run LIGERA!
 if (multi) {
-    tib <- ligera2_bed_multi(
-        file = name,
-        m_loci = m_loci,
-        n_ind = n_ind,
-        trait = trait,
-        mean_kinship = mean_kinship
-    )
+    if (fstat) {
+        # this version reads bim/fam internally, outputs bim merged as below already
+        tib <- ligera2_bed_f_multi(
+            file = name,
+            trait = trait,
+            mean_kinship = mean_kinship,
+            prune_ld = TRUE, # force this feature for real datasets
+            V = V
+        )
+    } else {
+        # this version reads bim/fam internally, outputs bim merged as below already
+        tib <- ligera2_bed_multi(
+            file = name,
+            trait = trait,
+            mean_kinship = mean_kinship,
+            prune_ld = TRUE # force this feature for real datasets
+        )
+    }
 } else {
-    tib <- ligera2_bed(
-        file = name,
-        m_loci = m_loci,
-        n_ind = n_ind,
-        trait = trait,
-        mean_kinship = mean_kinship
-    )
+    # read the full BIM table
+    bim <- read_bim( name )
+    # actual processing
+    if (fstat) {
+        tib <- ligera2_bed_f(
+            file = name,
+            m_loci = nrow( bim ),
+            n_ind = nrow( fam ),
+            trait = trait,
+            mean_kinship = mean_kinship,
+            V = V
+        )
+    } else {
+        tib <- ligera2_bed(
+            file = name,
+            m_loci = nrow( bim ),
+            n_ind = nrow( fam ),
+            trait = trait,
+            mean_kinship = mean_kinship
+        )
+    }
+    # can merge BIM into table to have a more complete report
+    tib <- bind_cols( bim, tib )
 }
-# can merge BIM into table to have a more complete report
-tib <- bind_cols( bim, tib )
 # write full table into an output file
 file_out <- paste0( name_out, '.txt' )
 write_tsv( tib, file_out )
