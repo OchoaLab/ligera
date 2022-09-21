@@ -102,3 +102,8 @@
   - Removed parameters `m_loci` and `n_ind` now that function just reads BIM and FAM files in addition to BED file that is required.
     - Package `genio` is now imported to read these files (used to be merely "suggested").
   - Function returns a bigger tibble containing the BIM table prepended to the previous association outputs.
+
+# ligera 1.0.16.9000 (2022-09-20)
+
+- Function `ligera2_bed_multi` ported ability to filter discovered loci by LD from `ligera2_bed_f_multi`, and all other related changes from previous entry.
+- Function `ligera2_bed_f_multi` added parameter `V` (to pass to `ligera2_bed_f`).

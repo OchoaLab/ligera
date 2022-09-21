@@ -1825,13 +1825,15 @@ if (
         expect_silent(
             tib_multi_bed <- ligera2_bed_multi(
                 file = name,
-                m_loci = m,
-                n_ind = n,
                 trait = trait,
                 mean_kinship = mean_kinship
             )
         )
-        expect_equal( tib_multi, tib_multi_bed )
+        # remove bim portion before comparing
+        tib_multi_bed[ c('chr', 'id', 'posg', 'pos', 'ref', 'alt') ] <- NULL
+        # stupid subset ([]) used to make classes match, otherwise the latter has "spec_tbl_df" "tbl_df" "tbl" "data.frame" , the latter is missing the first one
+        # https://www.tidyverse.org/blog/2018/12/readr-1-3-1/#tibble-subclass
+        expect_equal( tib_multi, tib_multi_bed[] )
     })
 
     test_that("ligera2_bed_f_multi runs without errors, matches ligera2_f_multi", {
@@ -1853,14 +1855,16 @@ if (
         expect_silent(
             tib_multi_opi_bed <- ligera2_bed_multi(
                 file = name,
-                m_loci = m,
-                n_ind = n,
                 trait = trait,
                 mean_kinship = mean_kinship,
                 one_per_iter = TRUE
             )
         )
-        expect_equal( tib_multi_opi, tib_multi_opi_bed )
+        # remove bim portion before comparing
+        tib_multi_opi_bed[ c('chr', 'id', 'posg', 'pos', 'ref', 'alt') ] <- NULL
+        # stupid subset ([]) used to make classes match, otherwise the latter has "spec_tbl_df" "tbl_df" "tbl" "data.frame" , the latter is missing the first one
+        # https://www.tidyverse.org/blog/2018/12/readr-1-3-1/#tibble-subclass
+        expect_equal( tib_multi_opi, tib_multi_opi_bed[] )
     })
 
     test_that("ligera2_bed_f_multi `one_per_iter = TRUE` runs without errors, matches ligera2_f_multi", {
@@ -1883,6 +1887,18 @@ if (
         # don't check output in this case, just hope there are no errors/warnings/messages
         expect_silent(
             tib <- ligera2_bed_f_multi(
+                file = name,
+                trait = trait,
+                mean_kinship = mean_kinship,
+                prune_ld = TRUE
+            )
+        )
+    })
+
+    test_that("ligera2_bed_multi runs with `prune_ld = TRUE`", {
+        # don't check output in this case, just hope there are no errors/warnings/messages
+        expect_silent(
+            tib <- ligera2_bed_multi(
                 file = name,
                 trait = trait,
                 mean_kinship = mean_kinship,

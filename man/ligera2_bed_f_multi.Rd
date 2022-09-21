@@ -14,6 +14,7 @@ ligera2_bed_f_multi(
   mem_factor = 0.7,
   mem_lim = NA,
   m_chunk_max = 1000,
+  V = 0,
   tol = 1e-15,
   prune_ld = FALSE,
   r2_max = 0.3,
@@ -42,6 +43,9 @@ Default in Linux and Windows is \code{mem_factor} times the free system memory, 
 
 \item{m_chunk_max}{Sets the maximum number of loci to process at the time.
 Actual number of loci loaded may be lower if memory is limiting.}
+
+\item{V}{Algorithm version (0, 1, 2).
+Experimental features, not worth explaining.}
 
 \item{tol}{Tolerance value passed to conjugate gradient method solver.}
 
