@@ -51,9 +51,7 @@ Rcpp::List get_b_inbr_bed_cpp(
   // die right away if needed, before initializing buffers etc
   if ( file_stream == NULL ) {
     // send error message to R
-    char msg[100];
-    sprintf(msg, "Could not open BED file `%s` for reading: %s", file, strerror( errno ));
-    Rcpp::stop(msg);
+    Rcpp::stop( "Could not open BED file `%s` for reading: %s", file, strerror( errno ) );
   }
 
   /////////////////////////
@@ -140,9 +138,7 @@ Rcpp::List get_b_inbr_bed_cpp(
       delete [] buffer; // free buffer memory
       fclose( file_stream ); // close file
       // now send error message to R
-      char msg[100];
-      sprintf(msg, "Truncated file: row %ld terminated at %ld bytes, expected %ld.", i+1, n_buf_read, n_buf); // convert to 1-based coordinates
-      Rcpp::stop(msg);
+      Rcpp::stop( "Truncated file: row %ld terminated at %ld bytes, expected %ld.", i+1, n_buf_read, n_buf ); // convert to 1-based coordinates
     }
 
     // process buffer now!
@@ -207,9 +203,7 @@ Rcpp::List get_b_inbr_bed_cpp(
 	    delete [] buffer; // free buffer memory
 	    fclose( file_stream ); // close file
 	    // now send error message to R
-	    char msg[200];
-	    sprintf(msg, "Row %ld padding was non-zero.  Either the specified number of individuals is incorrect or the input file is corrupt!", i+1); // convert to 1-based coordinates
-	    Rcpp::stop(msg);
+	    Rcpp::stop( "Row %ld padding was non-zero.  Either the specified number of individuals is incorrect or the input file is corrupt!", i+1 ); // convert to 1-based coordinates
 	  }
 	}
       }

@@ -111,3 +111,7 @@
 # ligera 1.0.17.9000 (2022-09-22)
 
 - `scripts/ligera2_bed.R` added `--fstat` option for running `ligera2_bed_f` and `ligera2_bed_f_multi` on a plink1 set of files on the terminal.
+
+# ligera 1.0.18.9000 (2023-01-04)
+
+- Preemptively solved an R-devel warning by replacing compound `sprintf` and `stop` calls in Rcpp code with direct `stop` calls.

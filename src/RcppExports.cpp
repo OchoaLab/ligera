@@ -5,6 +5,11 @@
 
 using namespace Rcpp;
 
+#ifdef RCPP_USE_GLOBAL_ROSTREAM
+Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
+Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
+#endif
+
 // get_b_inbr_bed_cpp
 Rcpp::List get_b_inbr_bed_cpp(const char* file, std::vector<int>::size_type m_loci, std::vector<int>::size_type n_ind, double mean_kinship, Rcpp::Nullable<Rcpp::LogicalVector> indexes_ind_R);
 RcppExport SEXP _ligera_get_b_inbr_bed_cpp(SEXP fileSEXP, SEXP m_lociSEXP, SEXP n_indSEXP, SEXP mean_kinshipSEXP, SEXP indexes_ind_RSEXP) {
